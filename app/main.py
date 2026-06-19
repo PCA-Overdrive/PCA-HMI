@@ -24,6 +24,7 @@ camera_stream_generator = CameraStreamGenerator(camera_manager)
 vehicle_state = {
     'speed': 0,  # km/h
     'gear': 'P',  # P, R, D
+    'steering_angle': 0,  # 조향각 (-20~20도)
     'collision_avoidance': True,  # 충돌방지 기능 On/Off
     'rear_camera_active': False,  # 후방 카메라 활성화 여부
 }
@@ -68,12 +69,14 @@ def simulate_sensor_data():
     # 차량 상태 시뮬레이션
     speeds = [0, 10, 20, 30, 0, 0, 0, 20, 0]
     gears = ['R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R']  # R단 고정 (카메라 테스트용)
+    steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
     
     cycle = 0
     while True:
         idx = cycle % len(speeds)
         vehicle_state['speed'] = speeds[idx]
         vehicle_state['gear'] = gears[idx]
+        vehicle_state['steering_angle'] = steering_angles[idx]
         vehicle_state['rear_camera_active'] = (gears[idx] == 'R')
         
         # PDW 데이터 시뮬레이션 (실제는 센서에서)
@@ -100,6 +103,7 @@ def get_vehicle_state():
     return jsonify({
         'speed': vehicle_state['speed'],
         'gear': vehicle_state['gear'],
+        'steering_angle': vehicle_state['steering_angle'],
         'collision_avoidance': vehicle_state['collision_avoidance'],
         'rear_camera_active': vehicle_state['rear_camera_active'],
     })

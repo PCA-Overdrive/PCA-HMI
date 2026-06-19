@@ -85,15 +85,26 @@ function updateSensorPositions() {
         
         // SVG 요소 업데이트
         const circle = document.querySelector(`.pdw-zone[data-direction="${sensorId}"] circle`);
+        const rect = document.querySelector(`.pdw-zone[data-direction="${sensorId}"] rect`);
         const text = document.querySelector(`.pdw-zone[data-direction="${sensorId}"] text`);
+        const svgX = pixelPos.x / (width / 400);
+        const svgY = pixelPos.y / (height / 500);
         
         if (circle) {
-            circle.setAttribute('cx', pixelPos.x / (width / 400)); // SVG viewBox 기준으로 변환
-            circle.setAttribute('cy', pixelPos.y / (height / 500));
+            circle.setAttribute('cx', svgX); // SVG viewBox 기준으로 변환
+            circle.setAttribute('cy', svgY);
+        }
+        if (rect) {
+            const rectWidth = Number(rect.getAttribute('width')) || 64;
+            const rectHeight = Number(rect.getAttribute('height')) || 44;
+            const rotation = Number(rect.dataset.rotation) || 0;
+            rect.setAttribute('x', svgX - rectWidth / 2);
+            rect.setAttribute('y', svgY - rectHeight / 2);
+            rect.setAttribute('transform', `rotate(${rotation} ${svgX} ${svgY})`);
         }
         if (text) {
-            text.setAttribute('x', pixelPos.x / (width / 400));
-            text.setAttribute('y', (pixelPos.y / (height / 500)) + 5);
+            text.setAttribute('x', svgX);
+            text.setAttribute('y', svgY + 5);
         }
     });
 }

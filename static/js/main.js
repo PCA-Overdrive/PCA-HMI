@@ -3,6 +3,8 @@
 class VehicleDisplay {
     constructor() {
         this.updateInterval = 100; // 100ms마다 업데이트
+        this.cameraActive = false;
+        this.lastGuideAngle = null;
         this.init();
     }
 
@@ -12,12 +14,6 @@ class VehicleDisplay {
     }
 
     setupEventListeners() {
-        // PDW 센서 클릭 이벤트
-        document.querySelectorAll('.pdw-zone').forEach(zone => {
-            zone.addEventListener('click', (e) => this.onPDWZoneClick(e));
-            zone.addEventListener('mouseenter', (e) => this.onPDWZoneHover(e));
-        });
-
         // 충돌방지 기능 클릭 (필요시)
         document.querySelector('.collision-indicator')?.addEventListener('click', () => {
             this.toggleCollisionAvoidance();
@@ -44,6 +40,7 @@ class VehicleDisplay {
             
             // 후방 카메라 활성화 여부
             this.updateCameraDisplay(data.rear_camera_active);
+            this.updateRearGuidelines(data.rear_camera_active, data.steering_angle || 0);
             
             // 충돌방지 상태 업데이트
             this.updateCollisionAvoidanceDisplay(data.collision_avoidance);
@@ -73,7 +70,9 @@ class VehicleDisplay {
             cameraStatus.style.display = 'none';
             
             // Motion JPEG 스트림을 직접 연결 (연속 스트리밍)
-            cameraFeed.src = '/api/camera-stream';
+            if (!this.cameraActive || cameraFeed.getAttribute('src') !== '/api/camera-stream') {
+                cameraFeed.src = '/api/camera-stream';
+            }
         } else {
             cameraStatus.style.display = 'block';
             cameraStatus.textContent = '카메라 대기 중...';
@@ -85,6 +84,90 @@ class VehicleDisplay {
                 this.cameraUpdateInterval = null;
             }
         }
+
+        this.cameraActive = isActive;
+    }
+
+    updateRearGuidelines(isActive, steeringAngle) {
+        const overlay = document.getElementById('rearGuideOverlay');
+        const guideLines = document.getElementById('rearGuideLines');
+        if (!overlay || !guideLines) return;
+
+        const normalizedAngle = this.clamp(Number(steeringAngle) || 0, -20, 20);
+        if (!isActive) {
+            overlay.classList.remove('active');
+            this.lastGuideAngle = null;
+            return;
+        }
+
+        overlay.classList.add('active');
+        if (this.lastGuideAngle === normalizedAngle && guideLines.childElementCount > 0) {
+            return;
+        }
+
+        this.lastGuideAngle = normalizedAngle;
+        guideLines.replaceChildren();
+
+        const turnShift = (normalizedAngle / 20) * 170;
+        const leftBottom = { x: 250, y: 590 };
+        const rightBottom = { x: 750, y: 590 };
+        const leftTop = { x: 405 + turnShift, y: 70 };
+        const rightTop = { x: 595 + turnShift, y: 70 };
+
+        const segments = [
+            { className: 'danger', from: 0.02, to: 0.28 },
+            { className: 'warning', from: 0.33, to: 0.62 },
+            { className: 'safe', from: 0.68, to: 0.96 },
+        ];
+
+        segments.forEach(segment => {
+            guideLines.appendChild(this.createGuideSegment(leftBottom, leftTop, segment));
+            guideLines.appendChild(this.createGuideSegment(rightBottom, rightTop, segment));
+        });
+
+        [
+            { className: 'danger', at: 0.18, length: 120 },
+            { className: 'warning', at: 0.50, length: 100 },
+            { className: 'safe', at: 0.83, length: 80 },
+        ].forEach(tick => {
+            guideLines.appendChild(this.createGuideTick(leftBottom, leftTop, tick, 1));
+            guideLines.appendChild(this.createGuideTick(rightBottom, rightTop, tick, -1));
+        });
+    }
+
+    createGuideSegment(bottom, top, segment) {
+        const start = this.pointOnLine(bottom, top, segment.from);
+        const end = this.pointOnLine(bottom, top, segment.to);
+        const path = this.createSvgElement('path');
+        path.setAttribute('class', `rear-guide-line ${segment.className}`);
+        path.setAttribute('d', `M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+        return path;
+    }
+
+    createGuideTick(bottom, top, tick, direction) {
+        const start = this.pointOnLine(bottom, top, tick.at);
+        const line = this.createSvgElement('line');
+        line.setAttribute('class', `rear-guide-tick ${tick.className}`);
+        line.setAttribute('x1', start.x);
+        line.setAttribute('y1', start.y);
+        line.setAttribute('x2', start.x + tick.length * direction);
+        line.setAttribute('y2', start.y);
+        return line;
+    }
+
+    pointOnLine(bottom, top, ratio) {
+        return {
+            x: bottom.x + (top.x - bottom.x) * ratio,
+            y: bottom.y + (top.y - bottom.y) * ratio,
+        };
+    }
+
+    createSvgElement(tagName) {
+        return document.createElementNS('http://www.w3.org/2000/svg', tagName);
+    }
+
+    clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
     }
 
     updateCollisionAvoidanceDisplay(isActive) {
@@ -127,33 +210,7 @@ class VehicleDisplay {
         // 새로운 레벨 추가
         zone.classList.add(`level-${data.level}`);
         
-        // 호버시 거리 정보 표시를 위해 data 속성 저장
-        zone.dataset.distance = data.distance;
         zone.dataset.level = data.level;
-    }
-
-    onPDWZoneClick(event) {
-        const zone = event.currentTarget;
-        const direction = zone.dataset.direction;
-        const distance = zone.dataset.distance;
-        const level = zone.dataset.level;
-        
-        const levelNames = ['감지 안됨', '안전', '근접', '위험'];
-        const levelName = levelNames[level];
-        
-        console.log(`${direction}: ${distance}cm (${levelName})`);
-        
-        // 선택된 센서 정보 표시
-        const distanceInfo = document.getElementById('selectedDistance');
-        if (distance === '0') {
-            distanceInfo.textContent = `선택된 센서: ${direction} - 감지 안됨`;
-        } else {
-            distanceInfo.textContent = `선택된 센서: ${direction} - ${distance}cm (${levelName})`;
-        }
-    }
-
-    onPDWZoneHover(event) {
-        // 호버 시 추가 시각 효과 (필요시 구현)
     }
 
     async toggleCollisionAvoidance() {

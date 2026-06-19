@@ -29,6 +29,7 @@ class TestVehicleDisplay(unittest.TestCase):
         data = json.loads(response.data)
         self.assertIn('speed', data)
         self.assertIn('gear', data)
+        self.assertIn('steering_angle', data)
         self.assertIn('collision_avoidance', data)
         self.assertIn('rear_camera_active', data)
     
@@ -74,6 +75,14 @@ class TestVehicleDisplay(unittest.TestCase):
         speed = data['speed']
         self.assertGreaterEqual(speed, 0)
         self.assertLessEqual(speed, 200)
+
+    def test_steering_angle_range(self):
+        """조향각 범위 검증"""
+        response = self.app.get('/api/vehicle-state')
+        data = json.loads(response.data)
+        steering_angle = data['steering_angle']
+        self.assertGreaterEqual(steering_angle, -20)
+        self.assertLessEqual(steering_angle, 20)
     
     def test_pdw_risk_levels(self):
         """PDW 위험 단계 검증"""

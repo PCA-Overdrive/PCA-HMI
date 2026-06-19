@@ -44,6 +44,10 @@
                     <div class="camera-label">후방 카메라</div>
                     <img id="cameraFeed" src="{{ url_for('static', filename='images/camera-placeholder.jpg') }}"
                         alt="후방 카메라">
+                    <svg class="rear-guide-overlay" id="rearGuideOverlay" viewBox="0 0 1000 600"
+                        preserveAspectRatio="none" aria-hidden="true">
+                        <g class="rear-guide-lines" id="rearGuideLines"></g>
+                    </svg>
                     <div class="camera-status" id="cameraStatus">카메라 대기 중...</div>
                 </div>
             </div>
@@ -65,62 +69,63 @@
                             <!-- PDW 센서 표시 영역 -->
                             <!-- 전방 센서 -->
                             <g class="pdw-zone fl-zone" data-direction="FL">
-                                <circle cx="140" cy="80" r="25" fill="#666" stroke="#999" stroke-width="1" />
+                                <rect x="94" y="63" width="92" height="34" rx="8" data-rotation="-45" fill="#666"
+                                    stroke="#999" stroke-width="1" />
                                 <text x="140" y="85" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">좌측전방</text>
                             </g>
 
                             <g class="pdw-zone fc-zone" data-direction="FC">
-                                <circle cx="200" cy="50" r="30" fill="#666" stroke="#999" stroke-width="1" />
+                                <rect x="154" y="33" width="92" height="34" rx="8" data-rotation="0" fill="#666"
+                                    stroke="#999" stroke-width="1" />
                                 <text x="200" y="56" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">전방</text>
                             </g>
 
                             <g class="pdw-zone fr-zone" data-direction="FR">
-                                <circle cx="260" cy="80" r="25" fill="#666" stroke="#999" stroke-width="1" />
+                                <rect x="214" y="63" width="92" height="34" rx="8" data-rotation="45" fill="#666"
+                                    stroke="#999" stroke-width="1" />
                                 <text x="260" y="85" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">우측전방</text>
                             </g>
 
                             <!-- 측면 센서 -->
                             <g class="pdw-zone sl-zone" data-direction="SL">
-                                <rect x="30" y="180" width="30" height="50" rx="5" fill="#666" stroke="#999"
-                                    stroke-width="1" />
-                                <text x="30" y="200" text-anchor="middle" fill="#fff" font-size="12"
+                                <rect x="4" y="185" width="92" height="34" rx="8" data-rotation="90" fill="#666"
+                                    stroke="#999" stroke-width="1" />
+                                <text x="50" y="207" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">좌측</text>
                             </g>
 
                             <g class="pdw-zone sr-zone" data-direction="SR">
-                                <rect x="340" y="180" width="30" height="50" rx="5" fill="#666" stroke="#999"
-                                    stroke-width="1" />
-                                <text x="340" y="210" text-anchor="middle" fill="#fff" font-size="12"
+                                <rect x="304" y="185" width="92" height="34" rx="8" data-rotation="90" fill="#666"
+                                    stroke="#999" stroke-width="1" />
+                                <text x="350" y="207" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">우측</text>
                             </g>
 
                             <!-- 후방 센서 -->
                             <g class="pdw-zone rl-zone" data-direction="RL">
-                                <circle cx="140" cy="420" r="25" fill="#666" stroke="#999" stroke-width="1" />
+                                <rect x="94" y="403" width="92" height="34" rx="8" data-rotation="45" fill="#666"
+                                    stroke="#999" stroke-width="1" />
                                 <text x="140" y="425" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">좌측후방</text>
                             </g>
 
                             <g class="pdw-zone rc-zone" data-direction="RC">
-                                <circle cx="200" cy="450" r="30" fill="#666" stroke="#999" stroke-width="1" />
+                                <rect x="154" y="433" width="92" height="34" rx="8" data-rotation="0" fill="#666"
+                                    stroke="#999" stroke-width="1" />
                                 <text x="200" y="456" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">후방</text>
                             </g>
 
                             <g class="pdw-zone rr-zone" data-direction="RR">
-                                <circle cx="260" cy="420" r="25" fill="#666" stroke="#999" stroke-width="1" />
+                                <rect x="214" y="403" width="92" height="34" rx="8" data-rotation="-45" fill="#666"
+                                    stroke="#999" stroke-width="1" />
                                 <text x="260" y="425" text-anchor="middle" fill="#fff" font-size="12"
                                     font-weight="bold">우측후방</text>
                             </g>
 
-                            <!-- 거리 정보 표시 -->
-                            <g id="distanceInfo">
-                                <text x="200" y="260" text-anchor="middle" fill="#999" font-size="14"
-                                    id="selectedDistance">선택된 센서: -</text>
-                            </g>
                         </svg>
                     </div> <!-- vehicle-overlay-container 닫기 -->
 
