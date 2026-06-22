@@ -6,7 +6,7 @@
 const VEHICLE_SENSOR_POSITIONS = {
   // 전방 센서 (Front)
   FL: {
-    x: 25, // 좌측
+    x: 20, // 좌측
     y: 9.7, // 상단
     label: "FL",
   },
@@ -16,7 +16,7 @@ const VEHICLE_SENSOR_POSITIONS = {
     label: "FC",
   },
   FR: {
-    x: 75, // 우측
+    x: 80, // 우측
     y: 9.7, // 상단
     label: "FR",
   },
@@ -24,7 +24,7 @@ const VEHICLE_SENSOR_POSITIONS = {
   // 측면 센서 (Side)
   SL: {
     x: 8, // 좌측
-    y: 45, // 중앙
+    y: 50, // 중앙
     label: "SL",
   },
   SR: {
@@ -35,7 +35,7 @@ const VEHICLE_SENSOR_POSITIONS = {
 
   // 후방 센서 (Rear)
   RL: {
-    x: 25, // 좌측
+    x: 20, // 좌측
     y: 90.3, // 하단
     label: "RL",
   },
@@ -45,7 +45,7 @@ const VEHICLE_SENSOR_POSITIONS = {
     label: "RC",
   },
   RR: {
-    x: 75, // 우측
+    x: 80, // 우측
     y: 90.3, // 하단
     label: "RR",
   },
