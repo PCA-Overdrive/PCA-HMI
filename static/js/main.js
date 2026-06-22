@@ -75,8 +75,7 @@ class VehicleDisplay {
     cameraFeed.onerror = () => {
       cameraFeed.onerror = null;
       cameraFeed.src = this.cameraFallbackSrc;
-      cameraStatus.style.display = "block";
-      cameraStatus.textContent = "카메라 연결 안됨";
+      cameraStatus.style.display = "none";
     };
 
     if (isActive && isCameraAvailable) {
@@ -92,8 +91,7 @@ class VehicleDisplay {
       }
     } else {
       cameraContainer.classList.remove("inactive");
-      cameraStatus.style.display = "block";
-      cameraStatus.textContent = isActive ? "카메라 연결 안됨" : "카메라 대기 중...";
+      cameraStatus.style.display = "none";
       if (cameraFeed.getAttribute("src") !== this.cameraFallbackSrc) {
         cameraFeed.src = this.cameraFallbackSrc;
       }
