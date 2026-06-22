@@ -1,160 +1,325 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>차량 디스플레이</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+  </head>
 
-<body>
+  <body>
     <div class="main-container">
-        <!-- 상단 헤더 -->
-        <header class="header">
-            <div class="header-section speed-section">
-                <div class="label">속도</div>
-                <div class="value speed-value">0</div>
-                <div class="unit">km/h</div>
-            </div>
-
-            <div class="header-section gear-section">
-                <div class="label">기어</div>
-                <div class="gear-display">
-                    <div class="gear-option p-gear">P</div>
-                    <div class="gear-option r-gear">R</div>
-                    <div class="gear-option d-gear">D</div>
-                </div>
-            </div>
-
-            <div class="header-section collision-section">
-                <div class="label">충돌방지</div>
-                <div class="collision-indicator">
-                    <div class="status-circle on"></div>
-                    <div class="status-text">ON</div>
-                </div>
-            </div>
-        </header>
-
-        <!-- 메인 콘텐츠 -->
-        <div class="content">
-            <!-- 좌측: 후방 카메라 -->
-            <div class="left-panel">
-                <div class="camera-container" id="cameraContainer">
-                    <div class="camera-label">후방 카메라</div>
-                    <img id="cameraFeed" src="{{ url_for('static', filename='images/camera-placeholder.jpg') }}"
-                        alt="후방 카메라">
-                    <svg class="rear-guide-overlay" id="rearGuideOverlay" viewBox="0 0 1000 600"
-                        preserveAspectRatio="none" aria-hidden="true">
-                        <g class="rear-guide-lines" id="rearGuideLines"></g>
-                    </svg>
-                    <div class="camera-status" id="cameraStatus">카메라 대기 중...</div>
-                </div>
-            </div>
-
-            <!-- 우측: PDW 및 차량 상단뷰 -->
-            <div class="right-panel">
-                <div class="pdw-container">
-                    <!-- 차량 상단 뷰 및 PDW 센서 표시 -->
-                    <div class="vehicle-overlay-container">
-                        <!-- 차량 배경 이미지 -->
-                        <img src="{{ url_for('static', filename='images/CAR_UPSIDE.png') }}" alt="차량 상단뷰"
-                            class="vehicle-background-image" />
-
-                        <!-- PDW 센서 오버레이 -->
-                        <svg class="vehicle-svg" viewBox="0 0 400 500" width="100%" height="100%">
-                            <!-- 차량 본체 -->
-                            <g class="vehicle-body"></g>
-
-                            <!-- PDW 센서 표시 영역 -->
-                            <!-- 전방 센서 -->
-                            <g class="pdw-zone fl-zone" data-direction="FL">
-                                <rect x="94" y="63" width="92" height="34" rx="8" data-rotation="-45" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="140" y="85" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">좌측전방</text>
-                            </g>
-
-                            <g class="pdw-zone fc-zone" data-direction="FC">
-                                <rect x="154" y="33" width="92" height="34" rx="8" data-rotation="0" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="200" y="56" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">전방</text>
-                            </g>
-
-                            <g class="pdw-zone fr-zone" data-direction="FR">
-                                <rect x="214" y="63" width="92" height="34" rx="8" data-rotation="45" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="260" y="85" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">우측전방</text>
-                            </g>
-
-                            <!-- 측면 센서 -->
-                            <g class="pdw-zone sl-zone" data-direction="SL">
-                                <rect x="4" y="185" width="92" height="34" rx="8" data-rotation="90" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="50" y="207" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">좌측</text>
-                            </g>
-
-                            <g class="pdw-zone sr-zone" data-direction="SR">
-                                <rect x="304" y="185" width="92" height="34" rx="8" data-rotation="90" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="350" y="207" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">우측</text>
-                            </g>
-
-                            <!-- 후방 센서 -->
-                            <g class="pdw-zone rl-zone" data-direction="RL">
-                                <rect x="94" y="403" width="92" height="34" rx="8" data-rotation="45" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="140" y="425" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">좌측후방</text>
-                            </g>
-
-                            <g class="pdw-zone rc-zone" data-direction="RC">
-                                <rect x="154" y="433" width="92" height="34" rx="8" data-rotation="0" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="200" y="456" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">후방</text>
-                            </g>
-
-                            <g class="pdw-zone rr-zone" data-direction="RR">
-                                <rect x="214" y="403" width="92" height="34" rx="8" data-rotation="-45" fill="#666"
-                                    stroke="#999" stroke-width="1" />
-                                <text x="260" y="425" text-anchor="middle" fill="#fff" font-size="12"
-                                    font-weight="bold">우측후방</text>
-                            </g>
-
-                        </svg>
-                    </div> <!-- vehicle-overlay-container 닫기 -->
-
-                    <!-- PDW 범례 -->
-                    <div class="pdw-legend">
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #666666;"></div>
-                            <span>감지 안됨</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #00ff00;"></div>
-                            <span>안전</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #ffaa00;"></div>
-                            <span>근접</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color" style="background-color: #ff0000;"></div>
-                            <span>위험</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <!-- 상단 헤더 -->
+      <header class="header">
+        <div class="header-section speed-section">
+          <div class="label">속도</div>
+          <div class="value speed-value">0</div>
+          <div class="unit">km/h</div>
         </div>
+
+        <div class="header-section gear-section">
+          <div class="label">기어</div>
+          <div class="gear-display">
+            <div class="gear-option p-gear">P</div>
+            <div class="gear-option r-gear">R</div>
+            <div class="gear-option d-gear">D</div>
+          </div>
+        </div>
+
+        <div class="header-section collision-section">
+          <div class="label">충돌방지</div>
+          <div class="collision-indicator">
+            <div class="status-circle on"></div>
+            <div class="status-text">ON</div>
+          </div>
+        </div>
+      </header>
+
+      <!-- 메인 콘텐츠 -->
+      <div class="content">
+        <!-- 좌측: 후방 카메라 -->
+        <div class="left-panel">
+          <div class="camera-container" id="cameraContainer">
+            <div class="camera-label">후방 카메라</div>
+            <img
+              id="cameraFeed"
+              src="{{ url_for('static', filename='images/camera-placeholder.jpg') }}"
+              alt="후방 카메라"
+            />
+            <svg
+              class="rear-guide-overlay"
+              id="rearGuideOverlay"
+              viewBox="0 0 1000 600"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <g class="rear-guide-lines" id="rearGuideLines"></g>
+            </svg>
+            <div class="camera-status" id="cameraStatus">카메라 대기 중...</div>
+          </div>
+        </div>
+
+        <!-- 우측: PDW 및 차량 상단뷰 -->
+        <div class="right-panel">
+          <div class="pdw-container">
+            <!-- 차량 상단 뷰 및 PDW 센서 표시 -->
+            <div class="vehicle-overlay-container">
+              <!-- 차량 배경 이미지 -->
+              <img
+                src="{{ url_for('static', filename='images/CAR_UPSIDE.png') }}"
+                alt="차량 상단뷰"
+                class="vehicle-background-image"
+              />
+
+              <!-- PDW 센서 오버레이 -->
+              <svg
+                class="vehicle-svg"
+                viewBox="0 0 400 500"
+                width="100%"
+                height="100%"
+              >
+                <!-- 차량 본체 -->
+                <g class="vehicle-body"></g>
+
+                <!-- PDW 센서 표시 영역 -->
+                <!-- 전방 센서 -->
+                <g class="pdw-zone fl-zone" data-direction="FL">
+                  <rect
+                    x="94"
+                    y="63"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="-45"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="140"
+                    y="85"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    좌측전방
+                  </text>
+                </g>
+
+                <g class="pdw-zone fc-zone" data-direction="FC">
+                  <rect
+                    x="154"
+                    y="33"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="0"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="200"
+                    y="56"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    전방
+                  </text>
+                </g>
+
+                <g class="pdw-zone fr-zone" data-direction="FR">
+                  <rect
+                    x="214"
+                    y="63"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="45"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="260"
+                    y="85"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    우측전방
+                  </text>
+                </g>
+
+                <!-- 측면 센서 -->
+                <g class="pdw-zone sl-zone" data-direction="SL">
+                  <rect
+                    x="4"
+                    y="185"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="90"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="50"
+                    y="207"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    좌측
+                  </text>
+                </g>
+
+                <g class="pdw-zone sr-zone" data-direction="SR">
+                  <rect
+                    x="304"
+                    y="185"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="90"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="350"
+                    y="207"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    우측
+                  </text>
+                </g>
+
+                <!-- 후방 센서 -->
+                <g class="pdw-zone rl-zone" data-direction="RL">
+                  <rect
+                    x="94"
+                    y="403"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="45"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="140"
+                    y="425"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    좌측후방
+                  </text>
+                </g>
+
+                <g class="pdw-zone rc-zone" data-direction="RC">
+                  <rect
+                    x="154"
+                    y="433"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="0"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="200"
+                    y="456"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    후방
+                  </text>
+                </g>
+
+                <g class="pdw-zone rr-zone" data-direction="RR">
+                  <rect
+                    x="214"
+                    y="403"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="-45"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="260"
+                    y="425"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    우측후방
+                  </text>
+                </g>
+              </svg>
+            </div>
+            <!-- vehicle-overlay-container 닫기 -->
+
+            <!-- PDW 범례 -->
+            <div class="pdw-legend">
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background-color: #666666"
+                ></div>
+                <span>감지 안됨</span>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background-color: #00ff00"
+                ></div>
+                <span>안전</span>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background-color: #ffaa00"
+                ></div>
+                <span>근접</span>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background-color: #ff0000"
+                ></div>
+                <span>위험</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/vehicle-positions.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-
+  </body>
 </html>

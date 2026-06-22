@@ -7,20 +7,20 @@ const VEHICLE_SENSOR_POSITIONS = {
     // 전방 센서 (Front)
     'FL': {
         x: 25,      // 좌측
-        y: 8,       // 상단
+        y: 9.7,     // 상단
         label: 'FL'
     },
     'FC': {
         x: 50,      // 중앙
-        y: 5,       // 상단
+        y: 4.2,     // 상단
         label: 'FC'
     },
     'FR': {
         x: 75,      // 우측
-        y: 8,       // 상단
+        y: 9.7,     // 상단
         label: 'FR'
     },
-    
+
     // 측면 센서 (Side)
     'SL': {
         x: 8,       // 좌측
@@ -32,21 +32,21 @@ const VEHICLE_SENSOR_POSITIONS = {
         y: 40,      // 중앙
         label: 'SR'
     },
-    
+
     // 후방 센서 (Rear)
     'RL': {
         x: 25,      // 좌측
-        y: 92,      // 하단
+        y: 90.3,    // 하단
         label: 'RL'
     },
     'RC': {
         x: 50,      // 중앙
-        y: 95,      // 하단
+        y: 95.8,    // 하단
         label: 'RC'
     },
     'RR': {
         x: 75,      // 우측
-        y: 92,      // 하단
+        y: 90.3,    // 하단
         label: 'RR'
     }
 };
@@ -61,7 +61,7 @@ const VEHICLE_SENSOR_POSITIONS = {
 function getSensorPixelPosition(sensorId, containerWidth, containerHeight) {
     const pos = VEHICLE_SENSOR_POSITIONS[sensorId];
     if (!pos) return null;
-    
+
     return {
         x: (containerWidth * pos.x) / 100,
         y: (containerHeight * pos.y) / 100,
@@ -75,23 +75,23 @@ function getSensorPixelPosition(sensorId, containerWidth, containerHeight) {
 function updateSensorPositions() {
     const container = document.querySelector('.vehicle-overlay-container');
     if (!container) return;
-    
+
     const width = container.offsetWidth;
     const height = container.offsetHeight;
-    
-    Object.entries(VEHICLE_SENSOR_POSITIONS).forEach(([sensorId, pos]) => {
+
+    Object.entries(VEHICLE_SENSOR_POSITIONS).forEach(([sensorId]) => {
         const pixelPos = getSensorPixelPosition(sensorId, width, height);
         if (!pixelPos) return;
-        
+
         // SVG 요소 업데이트
         const circle = document.querySelector(`.pdw-zone[data-direction="${sensorId}"] circle`);
         const rect = document.querySelector(`.pdw-zone[data-direction="${sensorId}"] rect`);
         const text = document.querySelector(`.pdw-zone[data-direction="${sensorId}"] text`);
         const svgX = pixelPos.x / (width / 400);
         const svgY = pixelPos.y / (height / 500);
-        
+
         if (circle) {
-            circle.setAttribute('cx', svgX); // SVG viewBox 기준으로 변환
+            circle.setAttribute('cx', svgX);
             circle.setAttribute('cy', svgY);
         }
         if (rect) {
