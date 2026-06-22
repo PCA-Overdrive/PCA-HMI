@@ -190,6 +190,38 @@ def toggle_collision_avoidance():
     vehicle_state['collision_avoidance'] = not vehicle_state['collision_avoidance']
     return jsonify({'status': 'success', 'collision_avoidance': vehicle_state['collision_avoidance']})
 
+def simulate_sensor_data():
+    """Simulation data updates for display testing."""
+    global vehicle_state, pdw_data
+
+    gears = ['P', 'R', 'D']
+    steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
+    level_distances = {
+        0: 0,
+        1: 150,
+        2: 90,
+        3: 40,
+    }
+    started_at = time.monotonic()
+
+    while True:
+        elapsed = time.monotonic() - started_at
+        sensor_level = int(elapsed // 3) % 4
+        gear = gears[int(elapsed // 10) % len(gears)]
+        steering_angle = steering_angles[int(elapsed // 3) % len(steering_angles)]
+        is_auto_stopped = sensor_level == 3
+
+        for direction in pdw_data:
+            pdw_data[direction]['distance'] = level_distances[sensor_level]
+            pdw_data[direction]['level'] = sensor_level
+
+        vehicle_state['speed'] = 0 if is_auto_stopped or gear == 'P' else 10
+        vehicle_state['gear'] = gear
+        vehicle_state['steering_angle'] = steering_angle
+        vehicle_state['rear_camera_active'] = (gear == 'R')
+
+        time.sleep(0.1)
+
 if __name__ == '__main__':
     # 센서 데이터 시뮬레이션 스레드 시작
     sensor_thread = threading.Thread(target=simulate_sensor_data, daemon=True)

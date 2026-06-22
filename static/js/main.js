@@ -5,6 +5,8 @@ class VehicleDisplay {
         this.updateInterval = 100; // 100ms마다 업데이트
         this.cameraActive = false;
         this.lastGuideAngle = null;
+        this.autoStopWarningActive = false;
+        this.autoStopPopupTimeout = null;
         this.init();
     }
 
@@ -191,13 +193,48 @@ class VehicleDisplay {
         try {
             const response = await fetch('/api/pdw-data');
             const pdwData = await response.json();
+            const hasDangerLevel = Object.values(pdwData).some(data => data.level === 3);
             
             for (const [direction, data] of Object.entries(pdwData)) {
                 this.updatePDWZone(direction, data);
             }
+            this.handleAutoStopWarning(hasDangerLevel);
         } catch (error) {
             console.error('PDW 데이터 업데이트 실패:', error);
         }
+    }
+
+    handleAutoStopWarning(hasDangerLevel) {
+        if (!hasDangerLevel) {
+            this.autoStopWarningActive = false;
+            return;
+        }
+
+        if (this.autoStopWarningActive) return;
+
+        this.autoStopWarningActive = true;
+        this.showAutoStopPopup();
+    }
+
+    showAutoStopPopup() {
+        let popup = document.querySelector('.auto-stop-popup');
+        if (!popup) {
+            popup = document.createElement('div');
+            popup.className = 'auto-stop-popup';
+            popup.setAttribute('role', 'alert');
+            popup.textContent = '위험 ! 자동 정차합니다.';
+            document.body.appendChild(popup);
+        }
+
+        popup.classList.add('visible');
+
+        if (this.autoStopPopupTimeout) {
+            clearTimeout(this.autoStopPopupTimeout);
+        }
+
+        this.autoStopPopupTimeout = setTimeout(() => {
+            popup.classList.remove('visible');
+        }, 2000);
     }
 
     updatePDWZone(direction, data) {

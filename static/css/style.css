@@ -240,6 +240,34 @@ body {
   display: none;
 }
 
+.auto-stop-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 1000;
+  min-width: 280px;
+  padding: 18px 28px;
+  border: 2px solid #ff0000;
+  border-radius: 8px;
+  background: rgba(20, 0, 0, 0.94);
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 0 24px rgba(255, 0, 0, 0.65);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.96);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.auto-stop-popup.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 /* 우측 패널 - PDW */
 .right-panel {
   flex: 1;
@@ -254,15 +282,15 @@ body {
   background: #ffffff;
   border: 2px solid #00bfff;
   border-radius: 10px;
-  padding: 20px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   position: relative;
   box-shadow:
-    0 0 20px rgba(0, 191, 255, 0.22),
-    inset 0 0 20px rgba(0, 0, 0, 0.04);
+    0 0 10px rgba(0, 191, 255, 0.22),
+    inset 0 0 10px rgba(0, 0, 0, 0.04);
 }
 
 /* SVG 스타일 */
@@ -375,7 +403,7 @@ body {
   display: flex;
   gap: 15px;
   margin-top: auto;
-  padding-top: 15px;
+  padding-top: 10px;
   border-top: 1px solid #dddddd;
   width: 100%;
   justify-content: center;
