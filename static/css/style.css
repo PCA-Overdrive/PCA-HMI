@@ -51,12 +51,26 @@ body {
 }
 
 /* 속도 표시 */
+.speed-display {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+}
+
 .speed-section .value {
   font-size: 36px;
   font-weight: bold;
   color: #00ff88;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+}
+
+.speed-unit {
+  font-size: 30px;
+  font-weight: 700;
+  color: #00ff88;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.45);
 }
 
 /* 기어 표시 */
