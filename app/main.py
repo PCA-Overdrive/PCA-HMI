@@ -3,8 +3,9 @@ Vehicle Display Web Server
 라즈베리파이 차량 제어 및 센서 데이터 표시 웹 서버
 """
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request, url_for
 from flask_cors import CORS
+import os
 import threading
 import time
 from datetime import datetime
@@ -12,7 +13,36 @@ import json
 from camera import CameraManager, CameraStreamGenerator
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
+
+RELOAD_WATCH_FILES = (
+    'css/style.css',
+    'js/main.js',
+    'js/vehicle-positions.js',
+)
+
+def get_asset_version(filename):
+    path = os.path.join(app.static_folder, filename)
+    return int(os.path.getmtime(path)) if os.path.exists(path) else int(time.time())
+
+def get_reload_version():
+    return max(get_asset_version(filename) for filename in RELOAD_WATCH_FILES)
+
+@app.context_processor
+def static_asset_helpers():
+    def static_url(filename):
+        return url_for('static', filename=filename, v=get_asset_version(filename))
+
+    return {'static_url': static_url}
+
+@app.after_request
+def disable_static_cache(response):
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
 
 # 카메라 관리자 초기화 (C920 웹캠 사용)
 # 해상도를 낮춰서 프레임레이트 향상
@@ -121,6 +151,11 @@ def get_pdw_data():
             'description': RISK_LEVELS[level]['description'],
         }
     return jsonify(pdw_with_levels)
+
+@app.route('/api/static-version', methods=['GET'])
+def get_static_version():
+    """Return a changing version for frontend assets."""
+    return jsonify({'version': get_reload_version()})
 
 @app.route('/api/camera-stream')
 def camera_stream():

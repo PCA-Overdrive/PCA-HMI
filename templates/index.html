@@ -6,7 +6,7 @@
     <title>차량 디스플레이</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='css/style.css') }}"
+      href="{{ static_url('css/style.css') }}"
     />
   </head>
 
@@ -319,7 +319,8 @@
       </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/vehicle-positions.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ static_url('js/vehicle-positions.js') }}"></script>
+    <script src="{{ static_url('js/main.js') }}"></script>
+    <script src="{{ static_url('js/dev-reload.js') }}"></script>
   </body>
 </html>
