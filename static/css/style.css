@@ -294,8 +294,8 @@ body {
   padding: 10px;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
   position: relative;
   overflow: visible;
   box-shadow:
@@ -306,26 +306,31 @@ body {
 /* SVG 스타일 */
 .vehicle-overlay-container {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: min(100%, 76vh);
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
   background: #ffffff;
-  flex: 1;
+  flex: 0 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
   margin-bottom: 15px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .vehicle-background-image {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  top: 50%;
+  left: 50%;
+  width: 42%;
+  height: 56%;
   object-fit: contain;
   opacity: 1;
-  z-index: 1;
+  z-index: 12;
+  transform: translate(-50%, -50%);
 }
 
 .vehicle-svg {
@@ -350,37 +355,51 @@ body {
 }
 
 .pdw-zone circle,
-.pdw-zone rect {
+.pdw-zone rect,
+.pdw-zone path {
   transition: all 0.3s ease;
   filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
 }
 
+.pdw-segment {
+  fill: rgba(48, 48, 48, 0.88);
+  stroke: #ffffff;
+  stroke-width: 4;
+  stroke-linejoin: round;
+}
+
+.pdw-zone rect,
 .pdw-zone text {
+  display: none;
   pointer-events: none;
 }
 
 /* 위험도별 색상 */
 .pdw-zone.level-0 circle,
-.pdw-zone.level-0 rect {
-  fill: #898888;
+.pdw-zone.level-0 rect,
+.pdw-zone.level-0 path {
+  fill: rgba(47, 47, 47, 0.9);
 }
 
 .pdw-zone.level-1 circle,
-.pdw-zone.level-1 rect {
-  fill: #00ff00;
+.pdw-zone.level-1 rect,
+.pdw-zone.level-1 path {
+  fill: rgba(0, 255, 0, 0.58);
 }
 
 .pdw-zone.level-2 circle,
-.pdw-zone.level-2 rect {
-  fill: #ffaa00;
+.pdw-zone.level-2 rect,
+.pdw-zone.level-2 path {
+  fill: rgba(255, 170, 0, 0.72);
   stroke: #ff8800;
   filter: drop-shadow(0 0 10px rgba(255, 170, 0, 0.6));
   animation: pulse-warning 1s infinite;
 }
 
 .pdw-zone.level-3 circle,
-.pdw-zone.level-3 rect {
-  fill: #ff0000;
+.pdw-zone.level-3 rect,
+.pdw-zone.level-3 path {
+  fill: rgba(255, 0, 0, 0.78);
   stroke: #cc0000;
   filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8));
   animation: pulse-danger 0.5s infinite;
