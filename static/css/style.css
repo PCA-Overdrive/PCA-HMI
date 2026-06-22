@@ -315,7 +315,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: visible;
-  margin-bottom: 15px;
+  margin-top: 12px;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -329,7 +329,6 @@ body {
   height: 56%;
   object-fit: contain;
   opacity: 1;
-  z-index: 12;
   transform: translate(-50%, -50%);
 }
 
@@ -339,8 +338,7 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 10;
-  overflow: visible;
+  z-index: 0;
 }
 
 .vehicle-body {
@@ -363,8 +361,8 @@ body {
 
 .pdw-segment {
   fill: rgba(48, 48, 48, 0.88);
-  stroke: #ffffff;
-  stroke-width: 4;
+  stroke: #232323;
+  stroke-width: 1;
   stroke-linejoin: round;
 }
 
@@ -391,7 +389,6 @@ body {
 .pdw-zone.level-2 rect,
 .pdw-zone.level-2 path {
   fill: rgba(255, 170, 0, 0.72);
-  stroke: #ff8800;
   filter: drop-shadow(0 0 10px rgba(255, 170, 0, 0.6));
   animation: pulse-warning 1s infinite;
 }
@@ -400,7 +397,6 @@ body {
 .pdw-zone.level-3 rect,
 .pdw-zone.level-3 path {
   fill: rgba(255, 0, 0, 0.78);
-  stroke: #cc0000;
   filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8));
   animation: pulse-danger 0.5s infinite;
 }
@@ -431,7 +427,7 @@ body {
 .pdw-legend {
   display: flex;
   gap: 15px;
-  padding-top: 5px;
+  padding-top: 1px;
   padding-bottom: 5px;
   border-top: 1px solid white;
   width: 100%;
