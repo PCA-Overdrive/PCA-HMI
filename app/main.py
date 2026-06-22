@@ -18,6 +18,7 @@ CORS(app)
 
 RELOAD_WATCH_FILES = (
     'css/style.css',
+    'images/CAR_UPSIDE_CUTOUT.png',
     'js/main.js',
     'js/vehicle-positions.js',
 )
