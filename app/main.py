@@ -3,7 +3,7 @@ Vehicle Display Web Server
 라즈베리파이 차량 제어 및 센서 데이터 표시 웹 서버
 """
 
-from flask import Flask, render_template, jsonify, request, url_for
+from flask import Flask, redirect, render_template, jsonify, request, url_for
 from flask_cors import CORS
 import os
 import threading
@@ -136,6 +136,7 @@ def get_vehicle_state():
         'steering_angle': vehicle_state['steering_angle'],
         'collision_avoidance': vehicle_state['collision_avoidance'],
         'rear_camera_active': vehicle_state['rear_camera_active'],
+        'camera_available': camera_manager.get_frame() is not None,
     })
 
 @app.route('/api/pdw-data', methods=['GET'])
@@ -162,6 +163,9 @@ def camera_stream():
     """후방 카메라 스트림 (Motion JPEG)
     C920 웹캠에서 실시간 스트림 제공
     """
+    if camera_manager.get_frame() is None:
+        return redirect(url_for('static', filename='images/CAMERA_NOT_FUN.png'))
+
     def generate():
         for frame in camera_stream_generator.generate():
             yield frame
