@@ -297,6 +297,7 @@ body {
   align-items: stretch;
   justify-content: flex-start;
   position: relative;
+  overflow: visible;
   box-shadow:
     0 0 10px rgba(0, 191, 255, 0.22),
     inset 0 0 10px rgba(0, 0, 0, 0.04);
@@ -312,7 +313,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   margin-bottom: 15px;
 }
 
