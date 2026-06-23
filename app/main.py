@@ -10,7 +10,22 @@ import threading
 import time
 from datetime import datetime
 import json
-from camera import CameraManager, CameraStreamGenerator
+try:
+    from .camera import CameraManager, CameraStreamGenerator
+    from .can_interface import (
+        DISTANCE_LEVEL_FIELDS,
+        build_dummy_distance_level_frame,
+        build_dummy_exit_complete_frame,
+        decode_can_frame,
+    )
+except ImportError:
+    from camera import CameraManager, CameraStreamGenerator
+    from can_interface import (
+        DISTANCE_LEVEL_FIELDS,
+        build_dummy_distance_level_frame,
+        build_dummy_exit_complete_frame,
+        decode_can_frame,
+    )
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -58,42 +73,33 @@ vehicle_state = {
     'steering_angle': 0,  # 조향각 (-20~20도)
     'collision_avoidance': True,  # 충돌방지 기능 On/Off
     'rear_camera_active': False,  # 후방 카메라 활성화 여부
+    'emergency_stop_activated': False,
+    'exit_complete': False,
+    'last_distance_level_frame': None,
+    'last_exit_complete_frame': None,
 }
 
-# PDW (Parking Distance Warning) 센서 데이터 (8개 방향)
+# PDW (Parking Distance Warning) data from CAN ID 0x400.
 pdw_data = {
-    'FL': {'distance': 150, 'level': 0},  # Front Left
-    'FC': {'distance': 200, 'level': 0},  # Front Center
-    'FR': {'distance': 150, 'level': 0},  # Front Right
-    'SL': {'distance': 100, 'level': 1},  # Side Left
-    'SR': {'distance': 120, 'level': 0},  # Side Right
-    'RL': {'distance': 80, 'level': 2},   # Rear Left
-    'RC': {'distance': 60, 'level': 3},   # Rear Center
-    'RR': {'distance': 90, 'level': 1},   # Rear Right
+    field_name: {'distance': None, 'level': 0}
+    for field_name in DISTANCE_LEVEL_FIELDS
 }
 
-# 위험 단계: 0=감지안됨, 1=안전, 2=근접, 3=위험
+# 위험 단계: 0=감지안됨, 1=안전, 2=주의, 3=근접, 4=위험
 RISK_LEVELS = {
     0: {'name': 'not_detected', 'color': '#666666', 'description': '감지 안됨'},
     1: {'name': 'safe', 'color': '#00ff00', 'description': '안전'},
-    2: {'name': 'proximity', 'color': '#ffaa00', 'description': '근접'},
-    3: {'name': 'danger', 'color': '#ff0000', 'description': '위험'},
+    2: {'name': 'caution', 'color': '#ffaa00', 'description': '주의'},
+    3: {'name': 'proximity', 'color': '#ff7a00', 'description': '근접'},
+    4: {'name': 'danger', 'color': '#ff0000', 'description': '위험'},
 }
 
 def update_pdw_levels():
-    """거리를 기반으로 PDW 위험 단계 업데이트 (거리 기준은 임의 설정)"""
+    """Clamp PDW levels to the interface enum range."""
     for direction in pdw_data:
-        distance = pdw_data[direction]['distance']
-        if distance == 0:
-            pdw_data[direction]['level'] = 0  # 감지안됨
-        elif distance > 120:
-            pdw_data[direction]['level'] = 1  # 안전
-        elif distance > 60:
-            pdw_data[direction]['level'] = 2  # 근접
-        else:
-            pdw_data[direction]['level'] = 3  # 위험
+        pdw_data[direction]['level'] = max(0, min(pdw_data[direction]['level'], 4))
 
-def simulate_sensor_data():
+def simulate_legacy_sensor_data():
     """센서 데이터 시뮬레이션 (실제로는 GPIO/센서에서 읽음)"""
     global vehicle_state, pdw_data
     
@@ -137,6 +143,10 @@ def get_vehicle_state():
         'steering_angle': vehicle_state['steering_angle'],
         'collision_avoidance': vehicle_state['collision_avoidance'],
         'rear_camera_active': vehicle_state['rear_camera_active'],
+        'emergency_stop_activated': vehicle_state['emergency_stop_activated'],
+        'exit_complete': vehicle_state['exit_complete'],
+        'last_distance_level_frame': vehicle_state['last_distance_level_frame'],
+        'last_exit_complete_frame': vehicle_state['last_exit_complete_frame'],
         'camera_available': camera_manager.get_frame() is not None,
     })
 
@@ -195,36 +205,51 @@ def toggle_collision_avoidance():
     vehicle_state['collision_avoidance'] = not vehicle_state['collision_avoidance']
     return jsonify({'status': 'success', 'collision_avoidance': vehicle_state['collision_avoidance']})
 
+def apply_distance_level_status(status, steering_angle=0):
+    """Apply decoded CAN ID 0x400 status to display state."""
+    for field_name, level in status['levels'].items():
+        pdw_data[field_name]['distance'] = None
+        pdw_data[field_name]['level'] = level
+
+    vehicle_state['speed'] = status['speed']
+    vehicle_state['gear'] = status['gear']
+    vehicle_state['steering_angle'] = steering_angle
+    vehicle_state['collision_avoidance'] = status['collision_avoidance']
+    vehicle_state['rear_camera_active'] = status['gear'] == 'R'
+    vehicle_state['emergency_stop_activated'] = status['emergency_stop_activated']
+    vehicle_state['last_distance_level_frame'] = {
+        'can_id': f"0x{status['can_id']:03X}",
+        'message_name': status['message_name'],
+        'payload': status['raw_payload'],
+    }
+
+
+def apply_exit_complete_status(status):
+    """Apply decoded CAN ID 0x401 status to display state."""
+    vehicle_state['exit_complete'] = status['exit_complete']
+    vehicle_state['last_exit_complete_frame'] = {
+        'can_id': f"0x{status['can_id']:03X}",
+        'message_name': status['message_name'],
+        'payload': status['raw_payload'],
+    }
+
+
 def simulate_sensor_data():
-    """Simulation data updates for display testing."""
+    """Decode deterministic dummy CAN frames for display testing."""
     global vehicle_state, pdw_data
 
-    gears = ['P', 'R', 'D']
     steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
-    level_distances = {
-        0: 0,
-        1: 150,
-        2: 90,
-        3: 40,
-    }
-    started_at = time.monotonic()
+    cycle = 0
 
     while True:
-        elapsed = time.monotonic() - started_at
-        sensor_level = int(elapsed // 3) % 4
-        gear = gears[int(elapsed // 10) % len(gears)]
-        steering_angle = steering_angles[int(elapsed // 3) % len(steering_angles)]
-        is_auto_stopped = sensor_level == 3
+        steering_angle = steering_angles[(cycle // 8) % len(steering_angles)]
+        distance_frame = build_dummy_distance_level_frame(cycle)
+        exit_frame = build_dummy_exit_complete_frame(cycle)
 
-        for direction in pdw_data:
-            pdw_data[direction]['distance'] = level_distances[sensor_level]
-            pdw_data[direction]['level'] = sensor_level
+        apply_distance_level_status(decode_can_frame(distance_frame), steering_angle)
+        apply_exit_complete_status(decode_can_frame(exit_frame))
 
-        vehicle_state['speed'] = 0 if is_auto_stopped or gear == 'P' else 10
-        vehicle_state['gear'] = gear
-        vehicle_state['steering_angle'] = steering_angle
-        vehicle_state['rear_camera_active'] = (gear == 'R')
-
+        cycle += 1
         time.sleep(0.1)
 
 if __name__ == '__main__':
