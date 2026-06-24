@@ -48,23 +48,6 @@ RELOAD_WATCH_FILES = (
     'js/vehicle-positions.js',
 )
 
-def get_camera_source():
-    """Return camera source from environment, preserving numeric indexes."""
-    source = os.getenv('CAMERA_SOURCE', '1').strip()
-    if source.lower() == 'pi':
-        return 'pi'
-
-    try:
-        return int(source)
-    except ValueError:
-        return source
-
-def get_int_env(name, default):
-    try:
-        return int(os.getenv(name, default))
-    except (TypeError, ValueError):
-        return default
-
 def get_asset_version(filename):
     path = os.path.join(app.static_folder, filename)
     return int(os.path.getmtime(path)) if os.path.exists(path) else int(time.time())
@@ -89,14 +72,7 @@ def disable_static_cache(response):
 
 # 카메라 관리자 초기화 (C920 웹캠 사용)
 # 해상도를 낮춰서 프레임레이트 향상
-camera_manager = CameraManager(
-    source=get_camera_source(),
-    resolution=(
-        get_int_env('CAMERA_RESOLUTION_W', 640),
-        get_int_env('CAMERA_RESOLUTION_H', 480),
-    ),
-    fps=get_int_env('CAMERA_FPS', 60),
-)
+camera_manager = CameraManager(source=0, resolution=(640, 480), fps=60)
 camera_manager.start()
 camera_stream_generator = CameraStreamGenerator(camera_manager)
 
@@ -111,7 +87,7 @@ vehicle_state = {
     'exit_complete': False,
     'last_distance_level_frame': None,
     'last_exit_complete_frame': None,
-}
+}       
 
 # PDW (Parking Distance Warning) data from CAN ID 0x400.
 pdw_data = {
@@ -232,19 +208,6 @@ def camera_frame():
     else:
         # 카메라를 사용할 수 없을 때 기본 이미지 반환
         return jsonify({'error': 'Camera not available'}), 503
-
-@app.route('/api/parking-line-state', methods=['GET'])
-def get_parking_line_state():
-    """Return the latest parking line detection result."""
-    result = camera_manager.get_parking_line_result()
-    if result is None:
-        return jsonify({
-            'detected': False,
-            'message': '주차선 검출 대기 중',
-            'debug': {},
-        })
-
-    return jsonify(result)
 
 @app.route('/api/toggle-collision-avoidance', methods=['POST'])
 def toggle_collision_avoidance():
