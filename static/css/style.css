@@ -396,6 +396,14 @@ body {
 .pdw-zone.level-3 circle,
 .pdw-zone.level-3 rect,
 .pdw-zone.level-3 path {
+  fill: rgba(255, 122, 0, 0.76);
+  filter: drop-shadow(0 0 12px rgba(255, 122, 0, 0.72));
+  animation: pulse-warning 0.8s infinite;
+}
+
+.pdw-zone.level-4 circle,
+.pdw-zone.level-4 rect,
+.pdw-zone.level-4 path {
   fill: rgba(255, 0, 0, 0.78);
   filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8));
   animation: pulse-danger 0.5s infinite;

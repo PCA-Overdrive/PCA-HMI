@@ -5,8 +5,16 @@
 import cv2
 import threading
 import time
+import os
 from io import BytesIO
 import numpy as np
+
+try:
+    from .parking_line_detector import ParkingLineDetector
+    from .utils import get_logger
+except ImportError:
+    from parking_line_detector import ParkingLineDetector
+    from utils import get_logger
 
 class CameraManager:
     """카메라 스트림 관리 클래스"""
@@ -24,8 +32,13 @@ class CameraManager:
         self.resolution = resolution
         self.fps = fps
         self.frame = None
+        self.parking_line_result = None
         self.is_running = False
         self.lock = threading.Lock()
+        self.parking_line_detector = ParkingLineDetector()
+        self.parking_line_logger = get_logger('parking_line')
+        self.parking_line_log_interval = 1.0
+        self._last_parking_line_log_at = 0.0
         self.jpeg_quality = 80  # JPEG 품질 (0-100, 낮을수록 빠름)
         
         try:
@@ -51,7 +64,11 @@ class CameraManager:
     
     def _init_opencv_camera(self):
         """OpenCV를 통한 USB/기본 카메라 초기화"""
-        self.camera = cv2.VideoCapture(self.source)
+        self.camera = self._open_video_capture()
+        if not self.camera.isOpened():
+            print(f"OpenCV 카메라를 열 수 없습니다: source={self.source}")
+            self.camera = None
+            return
         
         # 기본 카메라 설정
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
@@ -65,6 +82,19 @@ class CameraManager:
             pass  # 속성을 지원하지 않으면 무시
         
         print(f"OpenCV 카메라 초기화 완료: {self.resolution} @ {self.fps}fps")
+
+    def _open_video_capture(self):
+        backend = os.getenv('CAMERA_BACKEND', '').strip().upper()
+        backend_map = {
+            'ANY': cv2.CAP_ANY,
+            'MSMF': cv2.CAP_MSMF,
+            'DSHOW': cv2.CAP_DSHOW,
+        }
+
+        if backend in backend_map:
+            return cv2.VideoCapture(self.source, backend_map[backend])
+
+        return cv2.VideoCapture(self.source)
     
     def start(self):
         """카메라 스트림 시작"""
@@ -95,12 +125,17 @@ class CameraManager:
                     stream = BytesIO()
                     self.camera.capture(stream, format='jpeg')
                     stream.seek(0)
+                    jpeg_bytes = stream.getvalue()
+                    frame_array = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+                    frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+                    self._analyze_parking_lines(frame)
                     with self.lock:
-                        self.frame = stream.getvalue()
+                        self.frame = jpeg_bytes
                 else:
                     # OpenCV 카메라
                     ret, frame = self.camera.read()
                     if ret:
+                        self._analyze_parking_lines(frame)
                         # JPEG 품질 설정으로 인코딩 속도 향상
                         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 
                                        getattr(self, 'jpeg_quality', 80)]
@@ -113,10 +148,30 @@ class CameraManager:
             except Exception as e:
                 print(f"프레임 캡처 오류: {e}")
     
+    def _analyze_parking_lines(self, frame):
+        """Detect parking white lines and log perpendicular vector slope."""
+        now = time.time()
+        if now - self._last_parking_line_log_at < self.parking_line_log_interval:
+            return
+
+        result = self.parking_line_detector.detect(frame)
+        with self.lock:
+            self.parking_line_result = result
+
+        self.parking_line_logger.info(
+            self.parking_line_detector.format_log_message(result)
+        )
+        self._last_parking_line_log_at = now
+
     def get_frame(self):
         """현재 프레임 반환"""
         with self.lock:
             return self.frame
+
+    def get_parking_line_result(self):
+        """Return the latest parking line detection result."""
+        with self.lock:
+            return self.parking_line_result
     
     def get_mjpeg_frame(self):
         """MJPEG 형식의 프레임 반환"""
