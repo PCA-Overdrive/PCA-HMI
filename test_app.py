@@ -4,8 +4,16 @@
 
 import unittest
 import json
+import math
+import os
+import cv2
+import numpy as np
+
+os.environ.setdefault('CAMERA_SOURCE', '-1')
+
 from app.main import app, vehicle_state, pdw_data
 from app.can_interface import DISTANCE_LEVEL_FIELDS, decode_can_frame
+from app.parking_line_detector import ParkingLineDetector
 
 
 class TestVehicleDisplay(unittest.TestCase):
@@ -125,6 +133,56 @@ class SensorSimulationTest(unittest.TestCase):
         self.assertEqual(decoded['speed'], 3.5)
         self.assertEqual(decoded['gear'], 'R')
         self.assertTrue(decoded['collision_avoidance'])
+
+
+class ParkingLineDetectorTest(unittest.TestCase):
+    """Parking line detection tests."""
+
+    def test_detects_white_parking_line_perpendicular_slope(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        cv2.line(frame, (80, 220), (220, 100), (255, 255, 255), 8)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertTrue(result['detected'])
+        self.assertGreater(result['line_count'], 0)
+        self.assertIsNotNone(result['x_axis_slope'])
+        self.assertIsNotNone(result['x_axis_angle_deg'])
+        self.assertIsNotNone(result['y_axis_angle_deg'])
+        self.assertIsNotNone(result['perpendicular_slope'])
+        self.assertFalse(math.isnan(result['perpendicular_slope']))
+
+    def test_reports_not_detected_without_white_line(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertFalse(result['detected'])
+        self.assertEqual(detector.format_log_message(result), '주차선 검출안됨')
+
+    def test_detects_close_thick_parking_line_blob(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        cv2.line(frame, (90, 230), (220, 80), (255, 255, 255), 34)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertTrue(result['detected'])
+        self.assertEqual(result['candidate_type'], 'white_component')
+        self.assertIsNotNone(result['x_axis_slope'])
+        self.assertIsNotNone(result['y_axis_angle_deg'])
+        self.assertLess(abs(result['y_axis_angle_deg']), 70)
+
+    def test_rejects_large_white_reflection_blob(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        cv2.rectangle(frame, (80, 120), (240, 230), (255, 255, 255), -1)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertFalse(result['detected'])
 
 
 def run_performance_test():
