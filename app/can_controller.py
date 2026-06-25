@@ -35,7 +35,18 @@ LEVEL_CAUTION = 2
 LEVEL_CLOSE = 3
 LEVEL_DANGER = 4
 
-PDW_DIRECTIONS = ("FL", "FC", "FR", "SL", "SR", "RL", "RC", "RR")
+PDW_DIRECTIONS = (
+    "F",
+    "FR",
+    "RF",
+    "RB",
+    "BR",
+    "B",
+    "BL",
+    "LB",
+    "LF",
+    "FL",
+)
 DISPLAY_DISTANCE_BY_RAW_LEVEL = {
     LEVEL_NO_OBSTACLE: 0,
     LEVEL_SAFE: 150,

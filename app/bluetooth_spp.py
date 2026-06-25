@@ -17,10 +17,12 @@ except ImportError:
 
 
 EXIT_COMMANDS = {
-    "CANCEL_EXIT": 0,
-    "LEFT_EXIT": 1,
-    "RIGHT_EXIT": 2,
-    "STRAIGHT_EXIT": 3,
+    "NORMAL": 0,
+    "NORMAL_EXIT": 0,
+    "STRAIGHT_EXIT": 1,
+    "LEFT_EXIT": 2,
+    "RIGHT_EXIT": 3,
+    "CANCEL_EXIT": 4,
 }
 
 

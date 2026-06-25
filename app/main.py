@@ -105,14 +105,16 @@ vehicle_state = {
 
 # PDW (Parking Distance Warning) 센서 데이터 (8개 방향)
 pdw_data = {
-    'FL': {'distance': 150, 'level': 0, 'raw_level': 0},  # Front Left
-    'FC': {'distance': 200, 'level': 0, 'raw_level': 0},  # Front Center
-    'FR': {'distance': 150, 'level': 0, 'raw_level': 0},  # Front Right
-    'SL': {'distance': 100, 'level': 1, 'raw_level': 1},  # Side Left
-    'SR': {'distance': 120, 'level': 0, 'raw_level': 0},  # Side Right
-    'RL': {'distance': 80, 'level': 2, 'raw_level': 2},   # Rear Left
-    'RC': {'distance': 60, 'level': 3, 'raw_level': 3},   # Rear Center
-    'RR': {'distance': 90, 'level': 1, 'raw_level': 1},   # Rear Right
+    'F': {'distance': 150, 'level': 0, 'raw_level': 0},   # B0 Front
+    'FR': {'distance': 150, 'level': 0, 'raw_level': 0},  # B1 Front Right
+    'RF': {'distance': 150, 'level': 0, 'raw_level': 0},  # B2 Right Front
+    'RB': {'distance': 150, 'level': 0, 'raw_level': 0},  # B3 Right Behind
+    'BR': {'distance': 150, 'level': 0, 'raw_level': 0},  # B4 Behind Right
+    'B': {'distance': 150, 'level': 0, 'raw_level': 0},   # B5 Behind
+    'BL': {'distance': 150, 'level': 0, 'raw_level': 0},  # B6 Behind Left
+    'LB': {'distance': 150, 'level': 0, 'raw_level': 0},  # B7 Left Behind
+    'LF': {'distance': 150, 'level': 0, 'raw_level': 0},  # B8 Left Front
+    'FL': {'distance': 150, 'level': 0, 'raw_level': 0},  # B9 Front Left
 }
 
 # 위험 단계: 0=감지안됨, 1=안전, 2=근접, 3=위험
