@@ -2,19 +2,19 @@
 카메라 모듈 - 라즈베리파이 카메라 또는 USB 카메라 관리
 """
 
-import cv2
 import threading
 import time
+import math
 import os
 from io import BytesIO
-import numpy as np
 
 try:
-    from .parking_line_detector import ParkingLineDetector
-    from .utils import get_logger
-except ImportError:
-    from parking_line_detector import ParkingLineDetector
-    from utils import get_logger
+    import cv2
+    import numpy as np
+except Exception as exc:
+    cv2 = None
+    np = None
+    print(f"OpenCV/Numpy import failed. Camera is disabled: {exc}")
 
 class CameraManager:
     """카메라 스트림 관리 클래스"""
@@ -35,10 +35,11 @@ class CameraManager:
         self.parking_line_result = None
         self.is_running = False
         self.lock = threading.Lock()
-        self.parking_line_detector = ParkingLineDetector()
-        self.parking_line_logger = get_logger('parking_line')
-        self.parking_line_log_interval = 1.0
-        self._last_parking_line_log_at = 0.0
+        self.lane_angle = 0
+        self.lane_angle_updated_at = None
+        self.lane_detection_enabled = self._env_bool('LANE_DETECTION_ENABLED', True)
+        self.lane_detection_interval = float(os.getenv('LANE_DETECTION_INTERVAL', '0.1'))
+        self.last_lane_detection = 0
         self.jpeg_quality = 80  # JPEG 품질 (0-100, 낮을수록 빠름)
         
         try:
@@ -64,11 +65,10 @@ class CameraManager:
     
     def _init_opencv_camera(self):
         """OpenCV를 통한 USB/기본 카메라 초기화"""
-        self.camera = self._open_video_capture()
-        if not self.camera.isOpened():
-            print(f"OpenCV 카메라를 열 수 없습니다: source={self.source}")
-            self.camera = None
-            return
+        if cv2 is None:
+            raise RuntimeError("OpenCV is not available")
+
+        self.camera = cv2.VideoCapture(self.source)
         
         # 기본 카메라 설정
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
@@ -135,7 +135,7 @@ class CameraManager:
                     # OpenCV 카메라
                     ret, frame = self.camera.read()
                     if ret:
-                        self._analyze_parking_lines(frame)
+                        self._update_lane_angle(frame)
                         # JPEG 품질 설정으로 인코딩 속도 향상
                         encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 
                                        getattr(self, 'jpeg_quality', 80)]
@@ -168,10 +168,13 @@ class CameraManager:
         with self.lock:
             return self.frame
 
-    def get_parking_line_result(self):
-        """Return the latest parking line detection result."""
+    def get_lane_angle(self):
         with self.lock:
-            return self.parking_line_result
+            return self.lane_angle
+
+    def get_lane_angle_updated_at(self):
+        with self.lock:
+            return self.lane_angle_updated_at
     
     def get_mjpeg_frame(self):
         """MJPEG 형식의 프레임 반환"""
@@ -183,11 +186,89 @@ class CameraManager:
     
     def _get_placeholder_frame(self):
         """플레이스홀더 프레임 생성"""
+        if cv2 is None or np is None:
+            return None
+
         img = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
         cv2.putText(img, 'Camera Not Available', (50, 100), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         _, jpeg = cv2.imencode('.jpg', img)
         return jpeg.tobytes()
+
+
+    @staticmethod
+    def _env_bool(name, default=False):
+        value = os.getenv(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _update_lane_angle(self, frame):
+        if not self.lane_detection_enabled or cv2 is None or np is None:
+            return
+
+        now = time.time()
+        if now - self.last_lane_detection < self.lane_detection_interval:
+            return
+
+        self.last_lane_detection = now
+        angle = self._detect_lane_angle(frame)
+        if angle is None:
+            return
+
+        with self.lock:
+            self.lane_angle = angle
+            self.lane_angle_updated_at = now
+
+    def _detect_lane_angle(self, frame):
+        height, width = frame.shape[:2]
+        if height <= 0 or width <= 0:
+            return None
+
+        roi_top = int(height * 0.55)
+        roi = frame[roi_top:height, :]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blur, 60, 160)
+
+        lines = cv2.HoughLinesP(
+            edges,
+            1,
+            np.pi / 180,
+            threshold=40,
+            minLineLength=max(30, width // 12),
+            maxLineGap=40,
+        )
+        if lines is None:
+            return None
+
+        weighted_sum = 0.0
+        weight_total = 0.0
+        for line in lines[:, 0]:
+            x1, y1, x2, y2 = [int(value) for value in line]
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.hypot(dx, dy)
+            if length < 20:
+                continue
+
+            angle_from_horizontal = math.degrees(math.atan2(-dy, dx))
+            abs_angle = abs(angle_from_horizontal)
+            if abs_angle < 15 or abs_angle > 85:
+                continue
+
+            if angle_from_horizontal > 0:
+                lane_angle = angle_from_horizontal - 90
+            else:
+                lane_angle = angle_from_horizontal + 90
+
+            weighted_sum += lane_angle * length
+            weight_total += length
+
+        if weight_total == 0:
+            return None
+
+        return max(-180, min(180, int(round(weighted_sum / weight_total))))
 
 
 class CameraStreamGenerator:

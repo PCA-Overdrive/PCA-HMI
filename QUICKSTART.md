@@ -20,7 +20,7 @@ pip install -r requirements.txt
 # ============================================
 
 # 2.1 환경 파일 생성
-cp .env.example .env
+nano vehicle.env
 
 # 2.2 필요한 경우 .env 파일 수정
 # - CAMERA_SOURCE: 카메라 선택 (0=기본, 'pi'=라즈베리파이)

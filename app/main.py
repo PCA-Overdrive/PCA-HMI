@@ -10,36 +10,54 @@ import threading
 import time
 from datetime import datetime
 import json
-
 try:
     from dotenv import load_dotenv
-    load_dotenv()
 except ImportError:
-    pass
+    load_dotenv = None
 
-os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
-if os.name == 'nt':
-    os.environ.setdefault("CAMERA_BACKEND", "MSMF")
-try:
+if __package__:
     from .camera import CameraManager, CameraStreamGenerator
-    from .can_interface import (
-        DISTANCE_LEVEL_FIELDS,
-        build_dummy_distance_level_frame,
-        build_dummy_exit_complete_frame,
-        decode_can_frame,
+    from .can_controller import (
+        CAN_GEAR_LABELS,
+        DISPLAY_DISTANCE_BY_RAW_LEVEL,
+        PDW_DIRECTIONS,
+        VehicleCanController,
+        env_bool,
+        raw_level_to_display_level,
+        steer_byte_to_angle,
     )
-except ImportError:
+    from .bluetooth_spp import BluetoothSppServer
+else:
     from camera import CameraManager, CameraStreamGenerator
-    from can_interface import (
-        DISTANCE_LEVEL_FIELDS,
-        build_dummy_distance_level_frame,
-        build_dummy_exit_complete_frame,
-        decode_can_frame,
+    from can_controller import (
+        CAN_GEAR_LABELS,
+        DISPLAY_DISTANCE_BY_RAW_LEVEL,
+        PDW_DIRECTIONS,
+        VehicleCanController,
+        env_bool,
+        raw_level_to_display_level,
+        steer_byte_to_angle,
     )
+    from bluetooth_spp import BluetoothSppServer
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
+
+if load_dotenv is not None:
+    env_path = os.getenv(
+        'ENV_FILE',
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'vehicle.env'),
+    )
+    load_dotenv(env_path)
+
+CAN_ENABLED = env_bool('CAN_ENABLED', False)
+SIMULATION_MODE = env_bool('SIMULATION_MODE', not CAN_ENABLED)
+state_lock = threading.Lock()
+vehicle_can_controller = None
+bluetooth_spp_server = None
+LANE_ANGLE_UPDATE_INTERVAL = float(os.getenv('LANE_ANGLE_UPDATE_INTERVAL', '0.05'))
+LANE_ANGLE_LOG_ENABLED = env_bool('LANE_ANGLE_LOG_ENABLED', False)
 
 RELOAD_WATCH_FILES = (
     'css/style.css',
@@ -83,16 +101,28 @@ vehicle_state = {
     'steering_angle': 0,  # 조향각 (-20~20도)
     'collision_avoidance': True,  # 충돌방지 기능 On/Off
     'rear_camera_active': False,  # 후방 카메라 활성화 여부
-    'emergency_stop_activated': False,
-    'exit_complete': False,
-    'last_distance_level_frame': None,
-    'last_exit_complete_frame': None,
-}       
+    'emergency_stop': False,
+    'exit_status': 0,
+    'exit_command': 'CANCEL_EXIT',
+    'bluetooth_last_packet': '-',
+    'auto_parking_cmd': 0,
+    'controller_connected': False,
+    'can_last_rx_id': None,
+    'can_last_rx_at': None,
+}
 
 # PDW (Parking Distance Warning) data from CAN ID 0x400.
 pdw_data = {
-    field_name: {'distance': None, 'level': 0}
-    for field_name in DISTANCE_LEVEL_FIELDS
+    'F': {'distance': 150, 'level': 0, 'raw_level': 0},   # B0 Front
+    'FR': {'distance': 150, 'level': 0, 'raw_level': 0},  # B1 Front Right
+    'RF': {'distance': 150, 'level': 0, 'raw_level': 0},  # B2 Right Front
+    'RB': {'distance': 150, 'level': 0, 'raw_level': 0},  # B3 Right Behind
+    'BR': {'distance': 150, 'level': 0, 'raw_level': 0},  # B4 Behind Right
+    'B': {'distance': 150, 'level': 0, 'raw_level': 0},   # B5 Behind
+    'BL': {'distance': 150, 'level': 0, 'raw_level': 0},  # B6 Behind Left
+    'LB': {'distance': 150, 'level': 0, 'raw_level': 0},  # B7 Left Behind
+    'LF': {'distance': 150, 'level': 0, 'raw_level': 0},  # B8 Left Front
+    'FL': {'distance': 150, 'level': 0, 'raw_level': 0},  # B9 Front Left
 }
 
 # 위험 단계: 0=감지안됨, 1=안전, 2=주의, 3=근접, 4=위험
@@ -107,9 +137,43 @@ RISK_LEVELS = {
 def update_pdw_levels():
     """Clamp PDW levels to the interface enum range."""
     for direction in pdw_data:
-        pdw_data[direction]['level'] = max(0, min(pdw_data[direction]['level'], 4))
+        distance = pdw_data[direction]['distance']
+        if distance == 0:
+            pdw_data[direction]['level'] = 0  # 감지안됨
+        elif distance > 120:
+            pdw_data[direction]['level'] = 1  # 안전
+        elif distance > 60:
+            pdw_data[direction]['level'] = 2  # 근접
+        else:
+            pdw_data[direction]['level'] = 3  # 위험
 
-def simulate_legacy_sensor_data():
+def apply_can_snapshot(snapshot):
+    """Update display state only from CAN RX snapshots."""
+    obstacle_levels = snapshot.get('obstacle_levels', [])
+    gear_value = int(snapshot.get('gear_status_from_ecu', 0))
+    gear = CAN_GEAR_LABELS.get(gear_value, 'P')
+    pca_state = snapshot.get('pca_state', snapshot.get('pca_enabled', 0))
+
+    with state_lock:
+        vehicle_state['speed'] = int(snapshot.get('vehicle_speed', 0))
+        vehicle_state['gear'] = gear
+        vehicle_state['collision_avoidance'] = bool(pca_state)
+        vehicle_state['rear_camera_active'] = (gear == 'R')
+        vehicle_state['emergency_stop'] = bool(snapshot.get('emergency_stop', 0))
+        vehicle_state['exit_status'] = int(snapshot.get('exit_status', 0))
+        vehicle_state['auto_parking_cmd'] = int(snapshot.get('auto_parking_cmd', 0))
+        vehicle_state['controller_connected'] = bool(snapshot.get('joystick_connected', False))
+        vehicle_state['can_last_rx_id'] = snapshot.get('last_rx_id')
+        vehicle_state['can_last_rx_at'] = snapshot.get('last_rx_at')
+
+        for idx, direction in enumerate(PDW_DIRECTIONS):
+            raw_level = int(obstacle_levels[idx]) if idx < len(obstacle_levels) else 0
+            display_level = raw_level_to_display_level(raw_level)
+            pdw_data[direction]['raw_level'] = raw_level
+            pdw_data[direction]['level'] = display_level
+            pdw_data[direction]['distance'] = DISPLAY_DISTANCE_BY_RAW_LEVEL.get(raw_level, 20)
+
+def simulate_sensor_data():
     """센서 데이터 시뮬레이션 (실제로는 GPIO/센서에서 읽음)"""
     global vehicle_state, pdw_data
     
@@ -147,16 +211,22 @@ def index():
 @app.route('/api/vehicle-state', methods=['GET'])
 def get_vehicle_state():
     """현재 차량 상태 조회"""
+    with state_lock:
+        state = vehicle_state.copy()
     return jsonify({
-        'speed': vehicle_state['speed'],
-        'gear': vehicle_state['gear'],
-        'steering_angle': vehicle_state['steering_angle'],
-        'collision_avoidance': vehicle_state['collision_avoidance'],
-        'rear_camera_active': vehicle_state['rear_camera_active'],
-        'emergency_stop_activated': vehicle_state['emergency_stop_activated'],
-        'exit_complete': vehicle_state['exit_complete'],
-        'last_distance_level_frame': vehicle_state['last_distance_level_frame'],
-        'last_exit_complete_frame': vehicle_state['last_exit_complete_frame'],
+        'speed': state['speed'],
+        'gear': state['gear'],
+        'steering_angle': state['steering_angle'],
+        'collision_avoidance': state['collision_avoidance'],
+        'rear_camera_active': state['rear_camera_active'],
+        'emergency_stop': state.get('emergency_stop', False),
+        'exit_status': state.get('exit_status', 0),
+        'exit_command': state.get('exit_command', 'CANCEL_EXIT'),
+        'bluetooth_last_packet': state.get('bluetooth_last_packet', '-'),
+        'auto_parking_cmd': state.get('auto_parking_cmd', 0),
+        'controller_connected': state.get('controller_connected', False),
+        'can_last_rx_id': state.get('can_last_rx_id'),
+        'can_last_rx_at': state.get('can_last_rx_at'),
         'camera_available': camera_manager.get_frame() is not None,
     })
 
@@ -164,11 +234,15 @@ def get_vehicle_state():
 def get_pdw_data():
     """PDW 센서 데이터 조회"""
     pdw_with_levels = {}
-    for direction, data in pdw_data.items():
+    with state_lock:
+        pdw_snapshot = {direction: data.copy() for direction, data in pdw_data.items()}
+
+    for direction, data in pdw_snapshot.items():
         level = data['level']
         pdw_with_levels[direction] = {
             'distance': data['distance'],
             'level': level,
+            'raw_level': data.get('raw_level', level),
             'color': RISK_LEVELS[level]['color'],
             'description': RISK_LEVELS[level]['description'],
         }
@@ -212,37 +286,14 @@ def camera_frame():
 @app.route('/api/toggle-collision-avoidance', methods=['POST'])
 def toggle_collision_avoidance():
     """충돌방지 기능 토글"""
-    vehicle_state['collision_avoidance'] = not vehicle_state['collision_avoidance']
-    return jsonify({'status': 'success', 'collision_avoidance': vehicle_state['collision_avoidance']})
+    with state_lock:
+        vehicle_state['collision_avoidance'] = not vehicle_state['collision_avoidance']
+        collision_avoidance = vehicle_state['collision_avoidance']
 
-def apply_distance_level_status(status, steering_angle=0):
-    """Apply decoded CAN ID 0x400 status to display state."""
-    for field_name, level in status['levels'].items():
-        pdw_data[field_name]['distance'] = None
-        pdw_data[field_name]['level'] = level
+    if vehicle_can_controller is not None:
+        vehicle_can_controller.set_pca_enabled(collision_avoidance)
 
-    vehicle_state['speed'] = status['speed']
-    vehicle_state['gear'] = status['gear']
-    vehicle_state['steering_angle'] = steering_angle
-    vehicle_state['collision_avoidance'] = status['collision_avoidance']
-    vehicle_state['rear_camera_active'] = status['gear'] == 'R'
-    vehicle_state['emergency_stop_activated'] = status['emergency_stop_activated']
-    vehicle_state['last_distance_level_frame'] = {
-        'can_id': f"0x{status['can_id']:03X}",
-        'message_name': status['message_name'],
-        'payload': status['raw_payload'],
-    }
-
-
-def apply_exit_complete_status(status):
-    """Apply decoded CAN ID 0x401 status to display state."""
-    vehicle_state['exit_complete'] = status['exit_complete']
-    vehicle_state['last_exit_complete_frame'] = {
-        'can_id': f"0x{status['can_id']:03X}",
-        'message_name': status['message_name'],
-        'payload': status['raw_payload'],
-    }
-
+    return jsonify({'status': 'success', 'collision_avoidance': collision_avoidance})
 
 def simulate_sensor_data():
     """Decode deterministic dummy CAN frames for display testing."""
@@ -252,20 +303,84 @@ def simulate_sensor_data():
     cycle = 0
 
     while True:
-        steering_angle = steering_angles[(cycle // 8) % len(steering_angles)]
-        distance_frame = build_dummy_distance_level_frame(cycle)
-        exit_frame = build_dummy_exit_complete_frame(cycle)
+        elapsed = time.monotonic() - started_at
+        sensor_level = int(elapsed // 3) % 4
+        gear = gears[int(elapsed // 10) % len(gears)]
+        steering_angle = steering_angles[int(elapsed // 3) % len(steering_angles)]
+        is_auto_stopped = sensor_level == 3
 
-        apply_distance_level_status(decode_can_frame(distance_frame), steering_angle)
-        apply_exit_complete_status(decode_can_frame(exit_frame))
+        with state_lock:
+            for direction in pdw_data:
+                pdw_data[direction]['distance'] = level_distances[sensor_level]
+                pdw_data[direction]['level'] = sensor_level
+                pdw_data[direction]['raw_level'] = sensor_level
 
-        cycle += 1
+            vehicle_state['speed'] = 0 if is_auto_stopped or gear == 'P' else 10
+            vehicle_state['gear'] = gear
+            vehicle_state['steering_angle'] = steering_angle
+            vehicle_state['rear_camera_active'] = (gear == 'R')
+
         time.sleep(0.1)
 
+def handle_bluetooth_packet(packet):
+    """Show the latest raw Bluetooth SPP packet in the HMI."""
+    with state_lock:
+        vehicle_state['bluetooth_last_packet'] = packet
+
+def handle_bluetooth_exit_command(packet, command):
+    """Reflect Android SPP exit commands into server state and CAN TX."""
+    with state_lock:
+        vehicle_state['exit_command'] = packet
+        vehicle_state['bluetooth_last_packet'] = packet
+        vehicle_state['auto_parking_cmd'] = command
+
+    if vehicle_can_controller is not None:
+        vehicle_can_controller.set_auto_parking_cmd(command)
+
+def start_lane_angle_updates():
+    """Feed calculated camera lane angle into CAN 0x201 LineAngleCmd."""
+    if not env_bool('LANE_DETECTION_ENABLED', True):
+        return
+
+    def run():
+        last_log = 0
+        while True:
+            angle = camera_manager.get_lane_angle()
+            if vehicle_can_controller is not None:
+                vehicle_can_controller.set_line_angle_cmd(angle)
+
+            if LANE_ANGLE_LOG_ENABLED:
+                now = time.time()
+                if now - last_log >= 0.5:
+                    print(f"[LANE] angle={angle}", flush=True)
+                    last_log = now
+
+            time.sleep(LANE_ANGLE_UPDATE_INTERVAL)
+
+    threading.Thread(target=run, daemon=True).start()
+
+def start_background_services():
+    """Start CAN integration or simulation updates."""
+    global bluetooth_spp_server, vehicle_can_controller
+
+    can_started = False
+    if CAN_ENABLED:
+        vehicle_can_controller = VehicleCanController(on_state_update=apply_can_snapshot)
+        can_started = vehicle_can_controller.start()
+
+    bluetooth_spp_server = BluetoothSppServer(
+        on_exit_command=handle_bluetooth_exit_command,
+        on_packet=handle_bluetooth_packet,
+    )
+    bluetooth_spp_server.start()
+    start_lane_angle_updates()
+
+    if SIMULATION_MODE and not can_started:
+        sensor_thread = threading.Thread(target=simulate_sensor_data, daemon=True)
+        sensor_thread.start()
+
 if __name__ == '__main__':
-    # 센서 데이터 시뮬레이션 스레드 시작
-    sensor_thread = threading.Thread(target=simulate_sensor_data, daemon=True)
-    sensor_thread.start()
+    start_background_services()
     
     # Flask 서버 시작 (라즈베리파이의 모든 인터페이스에서 접근 가능)
     app.run(host='0.0.0.0', port=5000, debug=False)

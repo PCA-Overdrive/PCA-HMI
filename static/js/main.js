@@ -8,6 +8,18 @@ class VehicleDisplay {
     this.cameraFallbackSrc = "/static/images/CAMERA_NOT_FUN.png";
     this.autoStopWarningActive = false;
     this.autoStopPopupTimeout = null;
+    this.pdwZoneMap = {
+      F: "FC",
+      FR: "FR",
+      RF: "SR",
+      RB: "SR",
+      BR: "RR",
+      B: "RC",
+      BL: "RL",
+      LB: "SL",
+      LF: "SL",
+      FL: "FL",
+    };
     this.init();
   }
 
@@ -222,10 +234,21 @@ class VehicleDisplay {
       const response = await fetch("/api/pdw-data");
       const pdwData = await response.json();
       const hasDangerLevel = Object.values(pdwData).some(
-        (data) => data.level >= 4,
+        (data) => data.level >= 3,
       );
 
+      const displayData = {};
       for (const [direction, data] of Object.entries(pdwData)) {
+        const displayDirection = this.pdwZoneMap[direction] || direction;
+        if (
+          !displayData[displayDirection] ||
+          data.level > displayData[displayDirection].level
+        ) {
+          displayData[displayDirection] = data;
+        }
+      }
+
+      for (const [direction, data] of Object.entries(displayData)) {
         this.updatePDWZone(direction, data);
       }
       this.handleAutoStopWarning(hasDangerLevel);
