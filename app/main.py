@@ -98,6 +98,7 @@ vehicle_state = {
     'emergency_stop': False,
     'exit_status': 0,
     'exit_command': 'CANCEL_EXIT',
+    'bluetooth_last_packet': '-',
     'auto_parking_cmd': 0,
     'controller_connected': False,
 }
@@ -209,6 +210,7 @@ def get_vehicle_state():
         'emergency_stop': state.get('emergency_stop', False),
         'exit_status': state.get('exit_status', 0),
         'exit_command': state.get('exit_command', 'CANCEL_EXIT'),
+        'bluetooth_last_packet': state.get('bluetooth_last_packet', '-'),
         'auto_parking_cmd': state.get('auto_parking_cmd', 0),
         'controller_connected': state.get('controller_connected', False),
         'camera_available': camera_manager.get_frame() is not None,
@@ -313,10 +315,16 @@ def simulate_sensor_data():
 
         time.sleep(0.1)
 
+def handle_bluetooth_packet(packet):
+    """Show the latest raw Bluetooth SPP packet in the HMI."""
+    with state_lock:
+        vehicle_state['bluetooth_last_packet'] = packet
+
 def handle_bluetooth_exit_command(packet, command):
     """Reflect Android SPP exit commands into server state and CAN TX."""
     with state_lock:
         vehicle_state['exit_command'] = packet
+        vehicle_state['bluetooth_last_packet'] = packet
         vehicle_state['auto_parking_cmd'] = command
 
     if vehicle_can_controller is not None:
@@ -331,7 +339,10 @@ def start_background_services():
         vehicle_can_controller = VehicleCanController(on_state_update=apply_can_snapshot)
         can_started = vehicle_can_controller.start()
 
-    bluetooth_spp_server = BluetoothSppServer(on_exit_command=handle_bluetooth_exit_command)
+    bluetooth_spp_server = BluetoothSppServer(
+        on_exit_command=handle_bluetooth_exit_command,
+        on_packet=handle_bluetooth_packet,
+    )
     bluetooth_spp_server.start()
 
     if SIMULATION_MODE and not can_started:

@@ -25,10 +25,11 @@ EXIT_COMMANDS = {
 
 
 class BluetoothSppServer:
-    def __init__(self, on_exit_command=None):
+    def __init__(self, on_exit_command=None, on_packet=None):
         self.on_exit_command = on_exit_command
+        self.on_packet = on_packet
         self.enabled = env_bool("BLUETOOTH_ENABLED", False)
-        self.log_raw = env_bool("BLUETOOTH_LOG_RAW", False)
+        self.log_raw = env_bool("BLUETOOTH_LOG_RAW", True)
         self.channel = int(os.getenv("BLUETOOTH_RFCOMM_CHANNEL", "1"))
         self.bind_address = os.getenv("BLUETOOTH_BIND_ADDRESS", "00:00:00:00:00:00")
         self.restart_delay = float(os.getenv("BLUETOOTH_RESTART_DELAY", "2"))
@@ -105,7 +106,8 @@ class BluetoothSppServer:
 
             text = data.decode("utf-8", errors="ignore")
             if self.log_raw:
-                print(f"Bluetooth SPP raw: {text!r}", flush=True)
+                print(f"Bluetooth SPP received raw bytes: {data!r}", flush=True)
+                print(f"Bluetooth SPP received text: {text!r}", flush=True)
 
             buffer += text
 
@@ -119,6 +121,9 @@ class BluetoothSppServer:
             return
 
         print(f"Bluetooth SPP received: {packet}", flush=True)
+        if self.on_packet:
+            self.on_packet(packet)
+
         command = EXIT_COMMANDS.get(packet)
 
         if command is None:
