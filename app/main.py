@@ -296,23 +296,29 @@ def toggle_collision_avoidance():
     return jsonify({'status': 'success', 'collision_avoidance': collision_avoidance})
 
 def simulate_sensor_data():
-    """Decode deterministic dummy CAN frames for display testing."""
-    global vehicle_state, pdw_data
-
+    """Simulation data updates for display testing."""
+    gears = ['P', 'R', 'D']
     steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
-    cycle = 0
+    level_distances = {
+        0: 0,
+        1: 150,
+        2: 90,
+        3: 45,
+        4: 20,
+    }
+    started_at = time.monotonic()
 
     while True:
         elapsed = time.monotonic() - started_at
-        sensor_level = int(elapsed // 3) % 4
+        sensor_level = int(elapsed // 3) % 5
         gear = gears[int(elapsed // 10) % len(gears)]
         steering_angle = steering_angles[int(elapsed // 3) % len(steering_angles)]
-        is_auto_stopped = sensor_level == 3
+        is_auto_stopped = sensor_level >= 4
 
         with state_lock:
             for direction in pdw_data:
                 pdw_data[direction]['distance'] = level_distances[sensor_level]
-                pdw_data[direction]['level'] = sensor_level
+                pdw_data[direction]['level'] = raw_level_to_display_level(sensor_level)
                 pdw_data[direction]['raw_level'] = sensor_level
 
             vehicle_state['speed'] = 0 if is_auto_stopped or gear == 'P' else 10
