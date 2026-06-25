@@ -396,7 +396,8 @@ class VehicleCanController:
             data=bytes([speed, steer, gear, pca_enabled, line_bytes[0], line_bytes[1]]),
             is_extended_id=False
         )
-        self.bus.send(msg)
+        if not self._safe_can_send(msg, "0x201"):
+            return
         self._log_can_201(speed, steer, gear, pca_enabled, line_angle, msg.data)
 
     def _send_auto_parking(self, command):
@@ -405,8 +406,18 @@ class VehicleCanController:
             data=bytes([command]),
             is_extended_id=False,
         )
-        self.bus.send(msg)
+        if not self._safe_can_send(msg, "0x300"):
+            return
         self._log_can_300(command, msg.data)
+
+    def _safe_can_send(self, msg, label):
+        try:
+            self.bus.send(msg)
+            return True
+        except Exception as exc:
+            print(f"CAN TX {label} failed: {exc}. Disabling CAN TX.", flush=True)
+            self.can_available = False
+            return False
 
     def _log_can_201(self, speed, steer, gear, pca_enabled, line_angle, data):
         if not self.log_can_tx:

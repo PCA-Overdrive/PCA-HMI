@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $RootDir
+$env:ENV_FILE = Join-Path $RootDir "vehicle.env"
 
 $VenvDir = Join-Path $RootDir ".venv-windows"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"

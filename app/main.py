@@ -45,7 +45,11 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
 
 if load_dotenv is not None:
-    load_dotenv()
+    env_path = os.getenv(
+        'ENV_FILE',
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), 'vehicle.env'),
+    )
+    load_dotenv(env_path)
 
 CAN_ENABLED = env_bool('CAN_ENABLED', False)
 SIMULATION_MODE = env_bool('SIMULATION_MODE', not CAN_ENABLED)
