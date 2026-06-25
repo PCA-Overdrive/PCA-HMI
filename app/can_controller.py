@@ -352,7 +352,7 @@ class VehicleCanController:
         msg = self.can.Message(
             arbitration_id=0x201,
             data=bytes([speed, steer, gear, pca_enabled, line_bytes[0], line_bytes[1]]),
-            is_extended_id=False,
+            is_extended_id=False
         )
         self.bus.send(msg)
         self._log_can_201(speed, steer, gear, pca_enabled, line_angle, msg.data)
