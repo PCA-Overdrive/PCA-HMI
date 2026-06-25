@@ -7,6 +7,7 @@ class VehicleDisplay {
     this.lastGuideAngle = null;
     this.cameraFallbackSrc = "/static/images/CAMERA_NOT_FUN.png";
     this.autoStopWarningActive = false;
+    this.lastAutoStopSignal = false;
     this.autoStopPopupTimeout = null;
     this.pdwZoneMap = {
       F: "FrontLevelCmd",
@@ -57,7 +58,11 @@ class VehicleDisplay {
 
       // 후방 카메라 활성화 여부
       this.updateCameraDisplay(data.rear_camera_active);
-      this.updateRearGuidelines(true, Number(data.steering_angle) || 0);
+      this.updateRearGuidelines(
+        data.rear_camera_active,
+        Number(data.steering_angle) || 0,
+      );
+      this.handleAutoStopWarning(Boolean(data.emergency_stop_activated));
 
       // 충돌방지 상태 업데이트
       this.updateCollisionAvoidanceDisplay(data.collision_avoidance);
@@ -99,7 +104,7 @@ class VehicleDisplay {
         cameraFeed.src = "/api/camera-stream";
       }
     } else {
-      cameraContainer.classList.remove("inactive");
+      cameraContainer.classList.add("inactive");
       cameraStatus.style.display = "none";
       if (cameraFeed.getAttribute("src") !== this.cameraFallbackSrc) {
         cameraFeed.src = this.cameraFallbackSrc;
@@ -229,9 +234,6 @@ class VehicleDisplay {
     try {
       const response = await fetch("/api/pdw-data");
       const pdwData = await response.json();
-      const hasStopLevel = Object.values(pdwData).some(
-        (data) => data.level >= 4,
-      );
 
       const displayData = {};
       for (const [direction, data] of Object.entries(pdwData)) {
@@ -247,18 +249,19 @@ class VehicleDisplay {
       for (const [direction, data] of Object.entries(displayData)) {
         this.updatePDWZone(direction, data);
       }
-      this.handleAutoStopWarning(hasStopLevel);
     } catch (error) {
       console.error("PDW 데이터 업데이트 실패:", error);
     }
   }
 
-  handleAutoStopWarning(hasStopLevel) {
-    if (!hasStopLevel) {
-      this.autoStopWarningActive = false;
-      document.querySelector(".auto-stop-popup")?.classList.remove("visible");
+  handleAutoStopWarning(autoStopSignal) {
+    if (!autoStopSignal) {
+      this.lastAutoStopSignal = false;
       return;
     }
+
+    if (this.lastAutoStopSignal) return;
+    this.lastAutoStopSignal = true;
 
     if (this.autoStopWarningActive) return;
 
@@ -284,7 +287,8 @@ class VehicleDisplay {
 
     this.autoStopPopupTimeout = setTimeout(() => {
       popup.classList.remove("visible");
-    }, 2000);
+      this.autoStopWarningActive = false;
+    }, 5000);
   }
 
   updatePDWZone(direction, data) {
