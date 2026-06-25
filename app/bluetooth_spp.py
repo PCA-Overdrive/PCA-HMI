@@ -29,6 +29,7 @@ class BluetoothSppServer:
         self.on_exit_command = on_exit_command
         self.enabled = env_bool("BLUETOOTH_ENABLED", False)
         self.channel = int(os.getenv("BLUETOOTH_RFCOMM_CHANNEL", "1"))
+        self.bind_address = os.getenv("BLUETOOTH_BIND_ADDRESS", "00:00:00:00:00:00")
         self.restart_delay = float(os.getenv("BLUETOOTH_RESTART_DELAY", "2"))
         self.running = False
         self.thread = None
@@ -55,7 +56,7 @@ class BluetoothSppServer:
             try:
                 print("Bluetooth SPP server starting...", flush=True)
                 server_sock = self._create_server_socket()
-                server_sock.bind(("", self.channel))
+                server_sock.bind((self.bind_address, self.channel))
                 server_sock.listen(1)
                 print(f"Waiting for Android connection on RFCOMM channel {self.channel}", flush=True)
 
