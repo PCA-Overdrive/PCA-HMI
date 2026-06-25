@@ -95,6 +95,7 @@ class VehicleCanController:
         self.running = False
         self.bus = None
         self.can = None
+        self.can_available = False
         self.pygame = None
         self.joystick = None
         self.gpio = None
@@ -130,11 +131,15 @@ class VehicleCanController:
     def start(self):
         if self.running:
             return True
-        if not self._init_can_bus():
-            return False
+
+        self.can_available = self._init_can_bus()
 
         self.running = True
-        threading.Thread(target=self._can_rx_loop, daemon=True).start()
+        if self.can_available:
+            threading.Thread(target=self._can_rx_loop, daemon=True).start()
+        else:
+            print("CAN unavailable. Controller detection will run without CAN TX.", flush=True)
+
         threading.Thread(target=self._controller_tx_loop, daemon=True).start()
 
         if self.buzzer_enabled and self.buzzer_pin is not None:
@@ -181,6 +186,7 @@ class VehicleCanController:
                 "speed_cmd": self.speed_cmd,
                 "steer_cmd": self.steer_cmd,
                 "joystick_connected": self.joystick is not None,
+                "can_available": self.can_available,
             }
 
     def _init_can_bus(self):
@@ -282,11 +288,15 @@ class VehicleCanController:
 
             now = time.time()
             if now - last_201 >= self.tx_201_interval:
-                self._send_vehicle_status(speed, steer, gear_state, pca_enabled, line_angle_cmd)
+                if self.can_available:
+                    self._send_vehicle_status(speed, steer, gear_state, pca_enabled, line_angle_cmd)
+                else:
+                    self._log_controller_state(speed, steer, gear_state, pca_enabled, line_angle_cmd)
                 last_201 = now
 
             if now - last_300 >= self.tx_300_interval:
-                self._send_auto_parking(auto_parking_cmd)
+                if self.can_available:
+                    self._send_auto_parking(auto_parking_cmd)
                 last_300 = now
 
             if self.on_state_update:
@@ -310,9 +320,12 @@ class VehicleCanController:
         pygame.init()
         pygame.joystick.init()
 
-        if pygame.joystick.get_count() == 0:
+        joystick_count = pygame.joystick.get_count()
+        if joystick_count == 0:
+            print("Joystick not found. Waiting for controller...", flush=True)
             return None
 
+        print(f"Joystick count: {joystick_count}", flush=True)
         self.joystick = pygame.joystick.Joystick(0)
         self.joystick.init()
         print(f"Joystick connected: {self.joystick.get_name()}")
@@ -396,6 +409,23 @@ class VehicleCanController:
         data_hex = " ".join(f"{byte:02X}" for byte in data)
         print(
             f"[CAN TX 0x300] auto_parking_cmd={command} data=[{data_hex}]",
+            flush=True,
+        )
+
+    def _log_controller_state(self, speed, steer, gear, pca_enabled, line_angle):
+        if not self.log_can_tx:
+            return
+
+        now = time.time()
+        if now - self.last_201_log < self.log_interval:
+            return
+
+        self.last_201_log = now
+        gear_label = CAN_GEAR_LABELS.get(gear, str(gear))
+        print(
+            "[CONTROLLER] "
+            f"speed={speed} steer={steer} gear={gear_label}({gear}) "
+            f"pca={pca_enabled} line_angle={line_angle} can=unavailable",
             flush=True,
         )
 
