@@ -14,19 +14,8 @@ try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None
-try:
-    from camera import CameraManager, CameraStreamGenerator
-    from can_controller import (
-        CAN_GEAR_LABELS,
-        DISPLAY_DISTANCE_BY_RAW_LEVEL,
-        PDW_DIRECTIONS,
-        VehicleCanController,
-        env_bool,
-        raw_level_to_display_level,
-        steer_byte_to_angle,
-    )
-    from bluetooth_spp import BluetoothSppServer
-except ImportError:
+
+if __package__:
     from .camera import CameraManager, CameraStreamGenerator
     from .can_controller import (
         CAN_GEAR_LABELS,
@@ -38,6 +27,18 @@ except ImportError:
         steer_byte_to_angle,
     )
     from .bluetooth_spp import BluetoothSppServer
+else:
+    from camera import CameraManager, CameraStreamGenerator
+    from can_controller import (
+        CAN_GEAR_LABELS,
+        DISPLAY_DISTANCE_BY_RAW_LEVEL,
+        PDW_DIRECTIONS,
+        VehicleCanController,
+        env_bool,
+        raw_level_to_display_level,
+        steer_byte_to_angle,
+    )
+    from bluetooth_spp import BluetoothSppServer
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0

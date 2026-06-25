@@ -2,11 +2,17 @@
 카메라 모듈 - 라즈베리파이 카메라 또는 USB 카메라 관리
 """
 
-import cv2
 import threading
 import time
 from io import BytesIO
-import numpy as np
+
+try:
+    import cv2
+    import numpy as np
+except Exception as exc:
+    cv2 = None
+    np = None
+    print(f"OpenCV/Numpy import failed. Camera is disabled: {exc}")
 
 class CameraManager:
     """카메라 스트림 관리 클래스"""
@@ -51,6 +57,9 @@ class CameraManager:
     
     def _init_opencv_camera(self):
         """OpenCV를 통한 USB/기본 카메라 초기화"""
+        if cv2 is None:
+            raise RuntimeError("OpenCV is not available")
+
         self.camera = cv2.VideoCapture(self.source)
         
         # 기본 카메라 설정
@@ -128,6 +137,9 @@ class CameraManager:
     
     def _get_placeholder_frame(self):
         """플레이스홀더 프레임 생성"""
+        if cv2 is None or np is None:
+            return None
+
         img = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
         cv2.putText(img, 'Camera Not Available', (50, 100), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)

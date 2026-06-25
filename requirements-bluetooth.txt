@@ -1,1 +1,2 @@
-PyBluez>=0.23
+# Bluetooth SPP uses Python's built-in Linux Bluetooth socket support.
+# No extra pip package is required on Raspberry Pi.

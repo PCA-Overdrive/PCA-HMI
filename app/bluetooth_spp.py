@@ -6,6 +6,7 @@ does not stall the display server.
 """
 
 import os
+import socket
 import threading
 import time
 
@@ -47,20 +48,13 @@ class BluetoothSppServer:
         self.running = False
 
     def _serve_forever(self):
-        try:
-            from bluetooth import BluetoothSocket, RFCOMM
-        except ImportError:
-            print("PyBluez is not installed. Bluetooth SPP is disabled.", flush=True)
-            self.running = False
-            return
-
         while self.running:
             server_sock = None
             client_sock = None
 
             try:
                 print("Bluetooth SPP server starting...", flush=True)
-                server_sock = BluetoothSocket(RFCOMM)
+                server_sock = self._create_server_socket()
                 server_sock.bind(("", self.channel))
                 server_sock.listen(1)
                 print(f"Waiting for Android connection on RFCOMM channel {self.channel}", flush=True)
@@ -81,6 +75,22 @@ class BluetoothSppServer:
                     flush=True,
                 )
                 time.sleep(self.restart_delay)
+
+    @staticmethod
+    def _create_server_socket():
+        if hasattr(socket, "AF_BLUETOOTH") and hasattr(socket, "BTPROTO_RFCOMM"):
+            return socket.socket(
+                socket.AF_BLUETOOTH,
+                socket.SOCK_STREAM,
+                socket.BTPROTO_RFCOMM,
+            )
+
+        try:
+            from bluetooth import BluetoothSocket, RFCOMM
+        except ImportError as exc:
+            raise RuntimeError("Bluetooth RFCOMM socket is not available") from exc
+
+        return BluetoothSocket(RFCOMM)
 
     def _handle_client(self, client_sock):
         buffer = ""
@@ -120,7 +130,11 @@ class BluetoothSppServer:
     @staticmethod
     def _send_line(sock, message):
         try:
-            sock.send(f"{message}\n")
+            payload = f"{message}\n"
+            try:
+                sock.send(payload)
+            except TypeError:
+                sock.send(payload.encode("utf-8"))
             print(f"Bluetooth SPP sent: {message}", flush=True)
         except Exception as exc:
             print(f"Bluetooth SPP send failed: {exc}", flush=True)
