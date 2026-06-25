@@ -159,7 +159,11 @@ class VehicleCanController:
 
         threading.Thread(target=self._controller_tx_loop, daemon=True).start()
 
-        if self.buzzer_enabled and self.buzzer_pin is not None:
+        if not self.buzzer_enabled:
+            print("Buzzer disabled: BUZZER_ENABLED is false.", flush=True)
+        elif self.buzzer_pin is None:
+            print("Buzzer disabled: BUZZER_GPIO_PIN is empty or invalid.", flush=True)
+        else:
             self._start_buzzer()
 
         return True
@@ -167,7 +171,7 @@ class VehicleCanController:
     def stop(self):
         self.running = False
         if self.buzzer:
-            self.buzzer.stop()
+            self._close_buzzer()
         if self.gpio:
             self.gpio.cleanup()
         if self.pygame:
@@ -541,15 +545,32 @@ class VehicleCanController:
         try:
             import RPi.GPIO as GPIO
         except ImportError:
-            print("RPi.GPIO is not installed. Buzzer is disabled.")
+            GPIO = None
+
+        if GPIO is not None:
+            self.gpio = GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.buzzer_pin, GPIO.OUT)
+            self.buzzer = GPIO.PWM(self.buzzer_pin, 2000)
+            self.buzzer.start(0)
+            threading.Thread(target=self._buzzer_loop, daemon=True).start()
+            print(f"Buzzer started with RPi.GPIO on BCM GPIO {self.buzzer_pin}", flush=True)
             return
 
-        self.gpio = GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.buzzer_pin, GPIO.OUT)
-        self.buzzer = GPIO.PWM(self.buzzer_pin, 2000)
-        self.buzzer.start(0)
+        try:
+            from gpiozero import PWMOutputDevice
+            self.buzzer = PWMOutputDevice(self.buzzer_pin, initial_value=0, frequency=2000)
+        except Exception as exc:
+            print(
+                "GPIO library is not available. Buzzer is disabled. "
+                "Install on Raspberry Pi: sudo apt install python3-gpiozero python3-lgpio",
+                flush=True,
+            )
+            print(f"Buzzer GPIO init failed: {exc}", flush=True)
+            return
+
         threading.Thread(target=self._buzzer_loop, daemon=True).start()
+        print(f"Buzzer started with gpiozero on BCM GPIO {self.buzzer_pin}", flush=True)
 
     def _buzzer_loop(self):
         while self.running:
@@ -557,24 +578,42 @@ class VehicleCanController:
                 level = max(self.obstacle_levels)
 
             if level in (LEVEL_NO_OBSTACLE, LEVEL_SAFE):
-                self.buzzer.ChangeDutyCycle(0)
+                self._set_buzzer_duty(0)
                 time.sleep(0.05)
             elif level == LEVEL_CAUTION:
                 self._beep(0.08, 0.8)
             elif level == LEVEL_CLOSE:
                 self._beep(0.08, 0.25)
             elif level >= LEVEL_DANGER:
-                self.buzzer.ChangeDutyCycle(50)
+                self._set_buzzer_duty(50)
                 time.sleep(0.05)
             else:
-                self.buzzer.ChangeDutyCycle(0)
+                self._set_buzzer_duty(0)
                 time.sleep(0.05)
 
     def _beep(self, on_seconds, off_seconds):
-        self.buzzer.ChangeDutyCycle(50)
+        self._set_buzzer_duty(50)
         time.sleep(on_seconds)
-        self.buzzer.ChangeDutyCycle(0)
+        self._set_buzzer_duty(0)
         time.sleep(off_seconds)
+
+    def _set_buzzer_duty(self, duty):
+        if self.buzzer is None:
+            return
+        if hasattr(self.buzzer, "ChangeDutyCycle"):
+            self.buzzer.ChangeDutyCycle(duty)
+        elif hasattr(self.buzzer, "value"):
+            self.buzzer.value = clamp(float(duty) / 100.0, 0.0, 1.0)
+
+    def _close_buzzer(self):
+        try:
+            self._set_buzzer_duty(0)
+            if hasattr(self.buzzer, "stop"):
+                self.buzzer.stop()
+            if hasattr(self.buzzer, "close"):
+                self.buzzer.close()
+        except Exception:
+            pass
 
 
 class LinuxJoystick:
