@@ -221,7 +221,7 @@ class VehicleDisplay {
       const response = await fetch("/api/pdw-data");
       const pdwData = await response.json();
       const hasDangerLevel = Object.values(pdwData).some(
-        (data) => data.level === 3,
+        (data) => data.level >= 3,
       );
 
       for (const [direction, data] of Object.entries(pdwData)) {
