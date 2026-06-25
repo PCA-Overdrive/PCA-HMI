@@ -537,6 +537,45 @@ class VehicleCanController:
 
         return f"axes=[{', '.join(axes)}] buttons=[{', '.join(buttons)}]"
 
+    def _start_buzzer(self):
+        try:
+            import RPi.GPIO as GPIO
+        except ImportError:
+            print("RPi.GPIO is not installed. Buzzer is disabled.")
+            return
+
+        self.gpio = GPIO
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.buzzer_pin, GPIO.OUT)
+        self.buzzer = GPIO.PWM(self.buzzer_pin, 2000)
+        self.buzzer.start(0)
+        threading.Thread(target=self._buzzer_loop, daemon=True).start()
+
+    def _buzzer_loop(self):
+        while self.running:
+            with self.lock:
+                level = max(self.obstacle_levels)
+
+            if level in (LEVEL_NO_OBSTACLE, LEVEL_SAFE):
+                self.buzzer.ChangeDutyCycle(0)
+                time.sleep(0.05)
+            elif level == LEVEL_CAUTION:
+                self._beep(0.08, 0.8)
+            elif level == LEVEL_CLOSE:
+                self._beep(0.08, 0.25)
+            elif level >= LEVEL_DANGER:
+                self.buzzer.ChangeDutyCycle(50)
+                time.sleep(0.05)
+            else:
+                self.buzzer.ChangeDutyCycle(0)
+                time.sleep(0.05)
+
+    def _beep(self, on_seconds, off_seconds):
+        self.buzzer.ChangeDutyCycle(50)
+        time.sleep(on_seconds)
+        self.buzzer.ChangeDutyCycle(0)
+        time.sleep(off_seconds)
+
 
 class LinuxJoystick:
     """Minimal reader for Linux /dev/input/js* devices."""
@@ -589,42 +628,3 @@ class LinuxJoystick:
                 self.axes[number] = max(-1.0, min(1.0, value / 32767.0))
             elif event_type == self.JS_EVENT_BUTTON:
                 self.buttons[number] = 1 if value else 0
-
-    def _start_buzzer(self):
-        try:
-            import RPi.GPIO as GPIO
-        except ImportError:
-            print("RPi.GPIO is not installed. Buzzer is disabled.")
-            return
-
-        self.gpio = GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.buzzer_pin, GPIO.OUT)
-        self.buzzer = GPIO.PWM(self.buzzer_pin, 2000)
-        self.buzzer.start(0)
-        threading.Thread(target=self._buzzer_loop, daemon=True).start()
-
-    def _buzzer_loop(self):
-        while self.running:
-            with self.lock:
-                level = max(self.obstacle_levels)
-
-            if level in (LEVEL_NO_OBSTACLE, LEVEL_SAFE):
-                self.buzzer.ChangeDutyCycle(0)
-                time.sleep(0.05)
-            elif level == LEVEL_CAUTION:
-                self._beep(0.08, 0.7)
-            elif level == LEVEL_CLOSE:
-                self._beep(0.08, 0.15)
-            elif level >= LEVEL_DANGER:
-                self.buzzer.ChangeDutyCycle(50)
-                time.sleep(0.05)
-            else:
-                self.buzzer.ChangeDutyCycle(0)
-                time.sleep(0.05)
-
-    def _beep(self, on_seconds, off_seconds):
-        self.buzzer.ChangeDutyCycle(50)
-        time.sleep(on_seconds)
-        self.buzzer.ChangeDutyCycle(0)
-        time.sleep(off_seconds)

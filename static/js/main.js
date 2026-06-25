@@ -64,7 +64,6 @@ class VehicleDisplay {
 
       // 충돌방지 상태 업데이트
       this.updateCollisionAvoidanceDisplay(data.collision_avoidance);
-      this.handleAutoStopWarning(data.emergency_stop_activated);
     } catch (error) {
       console.error("차량 상태 업데이트 실패:", error);
     }
@@ -233,8 +232,8 @@ class VehicleDisplay {
     try {
       const response = await fetch("/api/pdw-data");
       const pdwData = await response.json();
-      const hasDangerLevel = Object.values(pdwData).some(
-        (data) => data.level >= 3,
+      const hasStopLevel = Object.values(pdwData).some(
+        (data) => data.level >= 4,
       );
 
       const displayData = {};
@@ -251,15 +250,16 @@ class VehicleDisplay {
       for (const [direction, data] of Object.entries(displayData)) {
         this.updatePDWZone(direction, data);
       }
-      this.handleAutoStopWarning(hasDangerLevel);
+      this.handleAutoStopWarning(hasStopLevel);
     } catch (error) {
       console.error("PDW 데이터 업데이트 실패:", error);
     }
   }
 
-  handleAutoStopWarning(hasDangerLevel) {
-    if (!hasDangerLevel) {
+  handleAutoStopWarning(hasStopLevel) {
+    if (!hasStopLevel) {
       this.autoStopWarningActive = false;
+      document.querySelector(".auto-stop-popup")?.classList.remove("visible");
       return;
     }
 
