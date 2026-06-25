@@ -268,31 +268,39 @@ class VehicleCanController:
             if msg is None:
                 continue
 
-            data = bytes(msg.data)
-            changed = False
-            self._log_can_rx(msg, data)
-
-            if msg.arbitration_id == 0x400 and len(data) >= 14:
-                with self.lock:
-                    self.obstacle_levels[:] = list(data[0:10])
-                    self.pca_state = data[10]
-                    self.vehicle_speed = data[11]
-                    self.gear_status_from_ecu = data[12]
-                    self.emergency_stop = data[13]
-                    self.last_rx_id = msg.arbitration_id
-                    self.last_rx_at = time.time()
-                changed = True
-            elif msg.arbitration_id == 0x401 and len(data) > 0:
-                with self.lock:
-                    self.exit_status = data[0]
-                    self.last_rx_id = msg.arbitration_id
-                    self.last_rx_at = time.time()
-                changed = True
-            elif msg.arbitration_id == 0x400:
-                print(f"CAN RX 0x400 ignored: expected >=14 bytes, got {len(data)}", flush=True)
+            changed = self._handle_can_rx_message(msg)
 
             if changed and self.on_state_update:
                 self.on_state_update(self.snapshot())
+
+    def _handle_can_rx_message(self, msg):
+        data = bytes(msg.data)
+        self._log_can_rx(msg, data)
+
+        if msg.arbitration_id == 0x400 and len(data) >= 14:
+            with self.lock:
+                self.obstacle_levels[:] = list(data[0:10])
+                self.pca_state = data[10]
+                self.vehicle_speed = data[11]
+                self.gear_status_from_ecu = data[12]
+                self.emergency_stop = data[13]
+                self.last_rx_id = msg.arbitration_id
+                self.last_rx_at = time.time()
+            return True
+
+        if msg.arbitration_id == 0x401 and len(data) > 0:
+            with self.lock:
+                self.exit_status = data[0]
+                if self.exit_status in (2, 3):
+                    self.auto_parking_cmd = 0
+                self.last_rx_id = msg.arbitration_id
+                self.last_rx_at = time.time()
+            return True
+
+        if msg.arbitration_id == 0x400:
+            print(f"CAN RX 0x400 ignored: expected >=14 bytes, got {len(data)}", flush=True)
+
+        return False
 
     def _controller_tx_loop(self):
         last_201 = 0
