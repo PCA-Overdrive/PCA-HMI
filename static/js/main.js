@@ -57,10 +57,7 @@ class VehicleDisplay {
 
       // 후방 카메라 활성화 여부
       this.updateCameraDisplay(data.rear_camera_active);
-      this.updateRearGuidelines(
-        data.rear_camera_active,
-        data.steering_angle || 0,
-      );
+      this.updateRearGuidelines(true, Number(data.steering_angle) || 0);
 
       // 충돌방지 상태 업데이트
       this.updateCollisionAvoidanceDisplay(data.collision_avoidance);

@@ -24,7 +24,7 @@ if __package__:
         VehicleCanController,
         env_bool,
         raw_level_to_display_level,
-        steer_byte_to_angle,
+        steer_axis_to_angle,
     )
     from .bluetooth_spp import BluetoothSppServer
 else:
@@ -36,7 +36,7 @@ else:
         VehicleCanController,
         env_bool,
         raw_level_to_display_level,
-        steer_byte_to_angle,
+        steer_axis_to_angle,
     )
     from bluetooth_spp import BluetoothSppServer
 
@@ -59,9 +59,12 @@ bluetooth_spp_server = None
 controller_state = {
     'steering_angle': 0,
     'steer_cmd': 127,
+    'steer_axis': 0.0,
 }
 LANE_ANGLE_UPDATE_INTERVAL = float(os.getenv('LANE_ANGLE_UPDATE_INTERVAL', '0.05'))
 LANE_ANGLE_LOG_ENABLED = env_bool('LANE_ANGLE_LOG_ENABLED', False)
+CONTROLLER_GUIDE_MAX_ANGLE = float(os.getenv('CONTROLLER_GUIDE_MAX_ANGLE', '60'))
+CONTROLLER_STEER_INVERT = env_bool('CONTROLLER_STEER_INVERT', False)
 
 RELOAD_WATCH_FILES = (
     'css/style.css',
@@ -220,6 +223,7 @@ def get_vehicle_state():
         'can_last_rx_id': state.get('can_last_rx_id'),
         'can_last_rx_at': state.get('can_last_rx_at'),
         'steer_cmd': controller['steer_cmd'],
+        'steer_axis': controller['steer_axis'],
         'steering_angle': controller['steering_angle'],
     })
 
@@ -328,9 +332,15 @@ def handle_bluetooth_exit_command(packet, command):
 
 def handle_controller_update(snapshot):
     """Update local controller steering for rear guide lines."""
+    steer_axis = float(snapshot.get('steer_axis', 0.0))
     with state_lock:
         controller_state['steer_cmd'] = int(snapshot.get('steer_cmd', 127))
-        controller_state['steering_angle'] = steer_byte_to_angle(controller_state['steer_cmd'])
+        controller_state['steer_axis'] = steer_axis
+        controller_state['steering_angle'] = steer_axis_to_angle(
+            steer_axis,
+            CONTROLLER_GUIDE_MAX_ANGLE,
+            CONTROLLER_STEER_INVERT,
+        )
 
 def start_lane_angle_updates():
     """Feed calculated camera lane angle into CAN 0x201 LineAngleCmd."""

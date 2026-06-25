@@ -79,6 +79,13 @@ def steer_byte_to_angle(steer_byte):
     return int(round(((int(steer_byte) - 127) / 128.0) * 60))
 
 
+def steer_axis_to_angle(axis_value, max_angle=60, invert=False):
+    axis = clamp(float(axis_value), -1.0, 1.0)
+    if invert:
+        axis *= -1.0
+    return int(round(axis * float(max_angle)))
+
+
 def raw_level_to_display_level(raw_level):
     raw_level = int(raw_level)
     if raw_level <= LEVEL_NO_OBSTACLE:
@@ -106,6 +113,8 @@ class VehicleCanController:
         self.log_controller = env_bool("CONTROLLER_LOG_ENABLED", env_bool("CAN_LOG_ENABLED", False))
         self.log_interval = float(os.getenv("CAN_LOG_INTERVAL", "0.2"))
         self.joystick_enabled = env_bool("CONTROLLER_ENABLED", True)
+        self.guide_max_angle = float(os.getenv("CONTROLLER_GUIDE_MAX_ANGLE", "60"))
+        self.steer_invert = env_bool("CONTROLLER_STEER_INVERT", False)
         self.buzzer_enabled = env_bool("BUZZER_ENABLED", False)
         self.buzzer_pin = self._read_optional_int("BUZZER_GPIO_PIN")
 
@@ -133,6 +142,8 @@ class VehicleCanController:
         self.line_angle_cmd = 0
         self.speed_cmd = 127
         self.steer_cmd = 127
+        self.speed_axis = 0.0
+        self.steer_axis = 0.0
         self.last_201_log = 0
         self.last_300_log = 0
         self.last_rx_log = 0
@@ -210,6 +221,8 @@ class VehicleCanController:
                 "line_angle_cmd": self.line_angle_cmd,
                 "speed_cmd": self.speed_cmd,
                 "steer_cmd": self.steer_cmd,
+                "speed_axis": self.speed_axis,
+                "steer_axis": self.steer_axis,
                 "joystick_connected": self.joystick is not None,
                 "can_available": self.can_available,
                 "last_rx_id": self.last_rx_id,
@@ -298,8 +311,10 @@ class VehicleCanController:
             try:
                 if self.pygame is not None:
                     self.pygame.event.pump()
-                speed = axis_to_byte(joystick.get_axis(1))
-                steer = axis_to_byte(joystick.get_axis(2))
+                speed_axis = float(joystick.get_axis(1))
+                steer_axis = float(joystick.get_axis(2))
+                speed = axis_to_byte(speed_axis)
+                steer = axis_to_byte(steer_axis)
                 self._read_gear_buttons(joystick)
                 self._read_pca_button(joystick)
             except Exception as exc:
@@ -320,6 +335,8 @@ class VehicleCanController:
             with self.lock:
                 self.speed_cmd = speed
                 self.steer_cmd = steer
+                self.speed_axis = speed_axis
+                self.steer_axis = steer_axis
 
             if self.on_controller_update:
                 self.on_controller_update(self.snapshot())
@@ -503,8 +520,10 @@ class VehicleCanController:
         print(
             "[CONTROLLER] "
             f"speed={speed} steer={steer} gear={gear_label}({gear}) "
-            f"guide_angle={steer_byte_to_angle(steer)} "
-            f"pca={pca_enabled} line_angle={line_angle} can=unavailable "
+            f"steer_axis={self.steer_axis:.3f} "
+            f"guide_angle={steer_axis_to_angle(self.steer_axis, self.guide_max_angle, self.steer_invert)} "
+            f"pca={pca_enabled} line_angle={line_angle} "
+            f"can={'available' if self.can_available else 'unavailable'} "
             f"{self._describe_joystick_inputs()}",
             flush=True,
         )
