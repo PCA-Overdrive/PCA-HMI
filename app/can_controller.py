@@ -103,6 +103,7 @@ class VehicleCanController:
         self.tx_300_interval = float(os.getenv("CAN_TX_300_INTERVAL", "0.1"))
         self.log_can_tx = env_bool("CAN_LOG_ENABLED", False)
         self.log_can_rx = env_bool("CAN_RX_LOG_ENABLED", env_bool("CAN_LOG_ENABLED", False))
+        self.log_controller = env_bool("CONTROLLER_LOG_ENABLED", env_bool("CAN_LOG_ENABLED", False))
         self.log_interval = float(os.getenv("CAN_LOG_INTERVAL", "0.2"))
         self.joystick_enabled = env_bool("CONTROLLER_ENABLED", True)
         self.buzzer_enabled = env_bool("BUZZER_ENABLED", False)
@@ -322,13 +323,12 @@ class VehicleCanController:
 
             if self.on_controller_update:
                 self.on_controller_update(self.snapshot())
+            self._log_controller_state(speed, steer, gear_state, pca_enabled, line_angle_cmd)
 
             now = time.time()
             if now - last_201 >= self.tx_201_interval:
                 if self.can_available:
                     self._send_vehicle_status(speed, steer, gear_state, pca_enabled, line_angle_cmd)
-                else:
-                    self._log_controller_state(speed, steer, gear_state, pca_enabled, line_angle_cmd)
                 last_201 = now
 
             if now - last_300 >= self.tx_300_interval:
@@ -491,7 +491,7 @@ class VehicleCanController:
         )
 
     def _log_controller_state(self, speed, steer, gear, pca_enabled, line_angle):
-        if not self.log_can_tx:
+        if not self.log_controller:
             return
 
         now = time.time()
