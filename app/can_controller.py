@@ -7,7 +7,10 @@ and RPi.GPIO happen at runtime so the Flask app can still run in development.
 
 import os
 import glob
+import shutil
 import struct
+import subprocess
+import sys
 import threading
 import time
 
@@ -542,6 +545,7 @@ class VehicleCanController:
         return f"axes=[{', '.join(axes)}] buttons=[{', '.join(buttons)}]"
 
     def _start_buzzer(self):
+        self._add_system_gpio_paths()
         try:
             import RPi.GPIO as GPIO
         except ImportError:
@@ -561,16 +565,42 @@ class VehicleCanController:
             from gpiozero import PWMOutputDevice
             self.buzzer = PWMOutputDevice(self.buzzer_pin, initial_value=0, frequency=2000)
         except Exception as exc:
+            print(f"gpiozero buzzer init failed: {exc}", flush=True)
+            if self._start_command_gpio_buzzer():
+                return
             print(
                 "GPIO library is not available. Buzzer is disabled. "
-                "Install on Raspberry Pi: sudo apt install python3-gpiozero python3-lgpio",
+                "Install on Raspberry Pi: sudo apt install python3-rpi.gpio python3-gpiozero python3-lgpio",
                 flush=True,
             )
-            print(f"Buzzer GPIO init failed: {exc}", flush=True)
             return
 
         threading.Thread(target=self._buzzer_loop, daemon=True).start()
         print(f"Buzzer started with gpiozero on BCM GPIO {self.buzzer_pin}", flush=True)
+
+    def _add_system_gpio_paths(self):
+        for path in (
+            "/usr/lib/python3/dist-packages",
+            f"/usr/local/lib/python{sys.version_info.major}.{sys.version_info.minor}/dist-packages",
+        ):
+            if os.path.isdir(path) and path not in sys.path:
+                sys.path.append(path)
+
+    def _start_command_gpio_buzzer(self):
+        if shutil.which("pinctrl") is None:
+            return False
+
+        try:
+            buzzer = CommandGpioBuzzer(self.buzzer_pin)
+            buzzer.start(0)
+        except Exception as exc:
+            print(f"pinctrl buzzer init failed: {exc}", flush=True)
+            return False
+
+        self.buzzer = buzzer
+        threading.Thread(target=self._buzzer_loop, daemon=True).start()
+        print(f"Buzzer started with pinctrl on BCM GPIO {self.buzzer_pin}", flush=True)
+        return True
 
     def _buzzer_loop(self):
         while self.running:
@@ -667,3 +697,33 @@ class LinuxJoystick:
                 self.axes[number] = max(-1.0, min(1.0, value / 32767.0))
             elif event_type == self.JS_EVENT_BUTTON:
                 self.buttons[number] = 1 if value else 0
+
+
+class CommandGpioBuzzer:
+    """Fallback GPIO output using Raspberry Pi OS pinctrl."""
+
+    def __init__(self, bcm_pin):
+        self.bcm_pin = int(bcm_pin)
+        self.value = 0.0
+        self._run("op", "dl")
+
+    def start(self, duty):
+        self.ChangeDutyCycle(duty)
+
+    def stop(self):
+        self.ChangeDutyCycle(0)
+
+    def close(self):
+        self.ChangeDutyCycle(0)
+
+    def ChangeDutyCycle(self, duty):
+        self.value = clamp(float(duty) / 100.0, 0.0, 1.0)
+        self._run("dh" if self.value > 0 else "dl")
+
+    def _run(self, *args):
+        subprocess.run(
+            ["pinctrl", "set", str(self.bcm_pin), *args],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )

@@ -219,6 +219,7 @@ def get_vehicle_state():
         'exit_status': state.get('exit_status', 0),
         'can_last_rx_id': state.get('can_last_rx_id'),
         'can_last_rx_at': state.get('can_last_rx_at'),
+        'steer_cmd': controller['steer_cmd'],
         'steering_angle': controller['steering_angle'],
     })
 
