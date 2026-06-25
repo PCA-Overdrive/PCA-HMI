@@ -4,7 +4,16 @@
 
 import unittest
 import json
+import math
+import os
+import cv2
+import numpy as np
+
+os.environ.setdefault('CAMERA_SOURCE', '-1')
+
 from app.main import app, vehicle_state, pdw_data
+from app.can_interface import DISTANCE_LEVEL_FIELDS, decode_can_frame
+from app.parking_line_detector import ParkingLineDetector
 
 
 class TestVehicleDisplay(unittest.TestCase):
@@ -19,7 +28,7 @@ class TestVehicleDisplay(unittest.TestCase):
         """메인 페이지 테스트"""
         response = self.app.get('/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'<!DOCTYPE html>', response.data)
+        self.assertIn(b'<!doctype html>', response.data)
     
     def test_vehicle_state_api(self):
         """차량 상태 API 테스트"""
@@ -39,9 +48,8 @@ class TestVehicleDisplay(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         
         data = json.loads(response.data)
-        # 8개 센서 확인
-        directions = ['FL', 'FC', 'FR', 'SL', 'SR', 'RL', 'RC', 'RR']
-        for direction in directions:
+        # 설계서 0x400의 10개 방향 필드 확인
+        for direction in DISTANCE_LEVEL_FIELDS:
             self.assertIn(direction, data)
             sensor_data = data[direction]
             self.assertIn('distance', sensor_data)
@@ -89,9 +97,9 @@ class TestVehicleDisplay(unittest.TestCase):
         response = self.app.get('/api/pdw-data')
         data = json.loads(response.data)
         
-        valid_colors = ['#666666', '#00ff00', '#ffaa00', '#ff0000']
+        valid_colors = ['#666666', '#00ff00', '#ffaa00', '#ff7a00', '#ff0000']
         for sensor_data in data.values():
-            self.assertIn(sensor_data['level'], [0, 1, 2, 3])
+            self.assertIn(sensor_data['level'], [0, 1, 2, 3, 4])
             self.assertIn(sensor_data['color'], valid_colors)
 
 
@@ -105,12 +113,76 @@ class SensorSimulationTest(unittest.TestCase):
         color_map = {
             0: '#666666',  # 감지안됨
             1: '#00ff00',  # 안전
-            2: '#ffaa00',  # 근접
-            3: '#ff0000',  # 위험
+            2: '#ffaa00',  # 주의
+            3: '#ff7a00',  # 근접
+            4: '#ff0000',  # 위험
         }
         
         for level, color in color_map.items():
             self.assertEqual(RISK_LEVELS[level]['color'], color)
+
+    def test_distance_level_can_frame_decode(self):
+        """0x400 DistanceLevelCmd 페이로드 디코딩 검증"""
+        payload = [1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 35, 2, 1]
+        decoded = decode_can_frame({'can_id': 0x400, 'data': payload})
+
+        self.assertEqual(decoded['message_name'], 'DistanceLevelCmd')
+        self.assertEqual(decoded['levels']['FrontLevelCmd'], 1)
+        self.assertEqual(decoded['levels']['RightBehindLevelCmd'], 4)
+        self.assertTrue(decoded['emergency_stop_activated'])
+        self.assertEqual(decoded['speed'], 3.5)
+        self.assertEqual(decoded['gear'], 'R')
+        self.assertTrue(decoded['collision_avoidance'])
+
+
+class ParkingLineDetectorTest(unittest.TestCase):
+    """Parking line detection tests."""
+
+    def test_detects_white_parking_line_perpendicular_slope(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        cv2.line(frame, (80, 220), (220, 100), (255, 255, 255), 8)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertTrue(result['detected'])
+        self.assertGreater(result['line_count'], 0)
+        self.assertIsNotNone(result['x_axis_slope'])
+        self.assertIsNotNone(result['x_axis_angle_deg'])
+        self.assertIsNotNone(result['y_axis_angle_deg'])
+        self.assertIsNotNone(result['perpendicular_slope'])
+        self.assertFalse(math.isnan(result['perpendicular_slope']))
+
+    def test_reports_not_detected_without_white_line(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertFalse(result['detected'])
+        self.assertEqual(detector.format_log_message(result), '주차선 검출안됨')
+
+    def test_detects_close_thick_parking_line_blob(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        cv2.line(frame, (90, 230), (220, 80), (255, 255, 255), 34)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertTrue(result['detected'])
+        self.assertEqual(result['candidate_type'], 'white_component')
+        self.assertIsNotNone(result['x_axis_slope'])
+        self.assertIsNotNone(result['y_axis_angle_deg'])
+        self.assertLess(abs(result['y_axis_angle_deg']), 70)
+
+    def test_rejects_large_white_reflection_blob(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        cv2.rectangle(frame, (80, 120), (240, 230), (255, 255, 255), -1)
+
+        detector = ParkingLineDetector(min_line_length=30)
+        result = detector.detect(frame)
+
+        self.assertFalse(result['detected'])
 
 
 def run_performance_test():

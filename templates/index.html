@@ -86,7 +86,7 @@
 
                 <!-- PDW 센서 표시 영역 -->
                 <!-- 전방 센서 -->
-                <g class="pdw-zone fl-zone" data-direction="FL">
+                <g class="pdw-zone front-left-zone" data-direction="FrontLeftLevelCmd">
                   <path
                     class="pdw-segment"
                     d="M 37 95 C 59 52 94 29 145 22 L 149 98 C 126 110 107 127 94 148 L 32 124 C 30 114 31 104 37 95 Z"
@@ -114,7 +114,7 @@
                   </text>
                 </g>
 
-                <g class="pdw-zone fc-zone" data-direction="FC">
+                <g class="pdw-zone front-zone" data-direction="FrontLevelCmd">
                   <path
                     class="pdw-segment"
                     d="M 160 21 C 186 17 214 17 240 21 L 246 97 C 216 90 184 90 154 97 Z"
@@ -142,7 +142,7 @@
                   </text>
                 </g>
 
-                <g class="pdw-zone fr-zone" data-direction="FR">
+                <g class="pdw-zone front-right-zone" data-direction="FrontRightLevelCmd">
                   <path
                     class="pdw-segment"
                     d="M 255 22 C 306 29 341 52 363 95 C 369 104 370 114 368 124 L 306 148 C 293 127 274 110 251 98 Z"
@@ -171,10 +171,10 @@
                 </g>
 
                 <!-- 측면 센서 -->
-                <g class="pdw-zone sl-zone" data-direction="SL">
+                <g class="pdw-zone left-front-zone" data-direction="LeftFrontLevelCmd">
                   <path
                     class="pdw-segment"
-                    d="M 29 141 L 88 168 C 79 219 79 281 88 332 L 29 359 C 10 296 10 204 29 141 Z"
+                    d="M 29 141 L 88 168 C 82 197 80 222 80 250 L 20 250 C 12 212 15 174 29 141 Z"
                   />
                   <rect
                     x="4"
@@ -199,10 +199,38 @@
                   </text>
                 </g>
 
-                <g class="pdw-zone sr-zone" data-direction="SR">
+                <g class="pdw-zone left-behind-zone" data-direction="LeftBehindLevelCmd">
                   <path
                     class="pdw-segment"
-                    d="M 371 141 C 390 204 390 296 371 359 L 312 332 C 321 281 321 219 312 168 Z"
+                    d="M 20 250 L 80 250 C 80 278 82 303 88 332 L 29 359 C 15 326 12 288 20 250 Z"
+                  />
+                  <rect
+                    x="4"
+                    y="282"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="90"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="50"
+                    y="304"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    좌측후방
+                  </text>
+                </g>
+
+                <g class="pdw-zone right-front-zone" data-direction="RightFrontLevelCmd">
+                  <path
+                    class="pdw-segment"
+                    d="M 371 141 C 385 174 388 212 380 250 L 320 250 C 320 222 318 197 312 168 Z"
                   />
                   <rect
                     x="304"
@@ -228,7 +256,35 @@
                 </g>
 
                 <!-- 후방 센서 -->
-                <g class="pdw-zone rl-zone" data-direction="RL">
+                <g class="pdw-zone right-behind-zone" data-direction="RightBehindLevelCmd">
+                  <path
+                    class="pdw-segment"
+                    d="M 380 250 C 388 288 385 326 371 359 L 312 332 C 318 303 320 278 320 250 Z"
+                  />
+                  <rect
+                    x="304"
+                    y="282"
+                    width="92"
+                    height="34"
+                    rx="8"
+                    data-rotation="90"
+                    fill="#666"
+                    stroke="#999"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="350"
+                    y="304"
+                    text-anchor="middle"
+                    fill="#fff"
+                    font-size="12"
+                    font-weight="bold"
+                  >
+                    우측후방
+                  </text>
+                </g>
+
+                <g class="pdw-zone behind-left-zone" data-direction="BehindLeftLevelCmd">
                   <path
                     class="pdw-segment"
                     d="M 32 376 L 94 352 C 107 373 126 390 149 402 L 145 478 C 94 471 59 448 37 405 C 31 396 30 386 32 376 Z"
@@ -256,7 +312,7 @@
                   </text>
                 </g>
 
-                <g class="pdw-zone rc-zone" data-direction="RC">
+                <g class="pdw-zone behind-zone" data-direction="BehindLevelCmd">
                   <path
                     class="pdw-segment"
                     d="M 154 403 C 184 410 216 410 246 403 L 240 479 C 214 483 186 483 160 479 Z"
@@ -284,7 +340,7 @@
                   </text>
                 </g>
 
-                <g class="pdw-zone rr-zone" data-direction="RR">
+                <g class="pdw-zone behind-right-zone" data-direction="BehindRightLevelCmd">
                   <path
                     class="pdw-segment"
                     d="M 306 352 L 368 376 C 370 386 369 396 363 405 C 341 448 306 471 255 478 L 251 402 C 274 390 293 373 306 352 Z"
@@ -335,6 +391,13 @@
                 <div
                   class="legend-color"
                   style="background-color: #ffaa00"
+                ></div>
+                <span>주의</span>
+              </div>
+              <div class="legend-item">
+                <div
+                  class="legend-color"
+                  style="background-color: #ff7a00"
                 ></div>
                 <span>근접</span>
               </div>

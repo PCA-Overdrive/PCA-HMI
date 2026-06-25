@@ -64,6 +64,7 @@ class VehicleDisplay {
 
       // 충돌방지 상태 업데이트
       this.updateCollisionAvoidanceDisplay(data.collision_avoidance);
+      this.handleAutoStopWarning(data.emergency_stop_activated);
     } catch (error) {
       console.error("차량 상태 업데이트 실패:", error);
     }
@@ -294,7 +295,13 @@ class VehicleDisplay {
     if (!zone) return;
 
     // 이전 레벨 제거
-    zone.classList.remove("level-0", "level-1", "level-2", "level-3");
+    zone.classList.remove(
+      "level-0",
+      "level-1",
+      "level-2",
+      "level-3",
+      "level-4",
+    );
 
     // 새로운 레벨 추가
     zone.classList.add(`level-${data.level}`);

@@ -32,6 +32,7 @@ class CameraManager:
         self.resolution = resolution
         self.fps = fps
         self.frame = None
+        self.parking_line_result = None
         self.is_running = False
         self.lock = threading.Lock()
         self.lane_angle = 0
@@ -81,6 +82,19 @@ class CameraManager:
             pass  # 속성을 지원하지 않으면 무시
         
         print(f"OpenCV 카메라 초기화 완료: {self.resolution} @ {self.fps}fps")
+
+    def _open_video_capture(self):
+        backend = os.getenv('CAMERA_BACKEND', '').strip().upper()
+        backend_map = {
+            'ANY': cv2.CAP_ANY,
+            'MSMF': cv2.CAP_MSMF,
+            'DSHOW': cv2.CAP_DSHOW,
+        }
+
+        if backend in backend_map:
+            return cv2.VideoCapture(self.source, backend_map[backend])
+
+        return cv2.VideoCapture(self.source)
     
     def start(self):
         """카메라 스트림 시작"""
@@ -111,8 +125,12 @@ class CameraManager:
                     stream = BytesIO()
                     self.camera.capture(stream, format='jpeg')
                     stream.seek(0)
+                    jpeg_bytes = stream.getvalue()
+                    frame_array = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+                    frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+                    self._analyze_parking_lines(frame)
                     with self.lock:
-                        self.frame = stream.getvalue()
+                        self.frame = jpeg_bytes
                 else:
                     # OpenCV 카메라
                     ret, frame = self.camera.read()
@@ -130,6 +148,21 @@ class CameraManager:
             except Exception as e:
                 print(f"프레임 캡처 오류: {e}")
     
+    def _analyze_parking_lines(self, frame):
+        """Detect parking white lines and log perpendicular vector slope."""
+        now = time.time()
+        if now - self._last_parking_line_log_at < self.parking_line_log_interval:
+            return
+
+        result = self.parking_line_detector.detect(frame)
+        with self.lock:
+            self.parking_line_result = result
+
+        self.parking_line_logger.info(
+            self.parking_line_detector.format_log_message(result)
+        )
+        self._last_parking_line_log_at = now
+
     def get_frame(self):
         """현재 프레임 반환"""
         with self.lock:

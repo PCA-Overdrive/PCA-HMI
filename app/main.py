@@ -111,7 +111,7 @@ vehicle_state = {
     'can_last_rx_at': None,
 }
 
-# PDW (Parking Distance Warning) 센서 데이터 (8개 방향)
+# PDW (Parking Distance Warning) data from CAN ID 0x400.
 pdw_data = {
     'F': {'distance': 150, 'level': 0, 'raw_level': 0},   # B0 Front
     'FR': {'distance': 150, 'level': 0, 'raw_level': 0},  # B1 Front Right
@@ -125,16 +125,17 @@ pdw_data = {
     'FL': {'distance': 150, 'level': 0, 'raw_level': 0},  # B9 Front Left
 }
 
-# 위험 단계: 0=감지안됨, 1=안전, 2=근접, 3=위험
+# 위험 단계: 0=감지안됨, 1=안전, 2=주의, 3=근접, 4=위험
 RISK_LEVELS = {
     0: {'name': 'not_detected', 'color': '#666666', 'description': '감지 안됨'},
     1: {'name': 'safe', 'color': '#00ff00', 'description': '안전'},
-    2: {'name': 'proximity', 'color': '#ffaa00', 'description': '근접'},
-    3: {'name': 'danger', 'color': '#ff0000', 'description': '위험'},
+    2: {'name': 'caution', 'color': '#ffaa00', 'description': '주의'},
+    3: {'name': 'proximity', 'color': '#ff7a00', 'description': '근접'},
+    4: {'name': 'danger', 'color': '#ff0000', 'description': '위험'},
 }
 
 def update_pdw_levels():
-    """거리를 기반으로 PDW 위험 단계 업데이트 (거리 기준은 임의 설정)"""
+    """Clamp PDW levels to the interface enum range."""
     for direction in pdw_data:
         distance = pdw_data[direction]['distance']
         if distance == 0:
@@ -295,18 +296,11 @@ def toggle_collision_avoidance():
     return jsonify({'status': 'success', 'collision_avoidance': collision_avoidance})
 
 def simulate_sensor_data():
-    """Simulation data updates for display testing."""
+    """Decode deterministic dummy CAN frames for display testing."""
     global vehicle_state, pdw_data
 
-    gears = ['P', 'R', 'D']
     steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
-    level_distances = {
-        0: 0,
-        1: 150,
-        2: 90,
-        3: 40,
-    }
-    started_at = time.monotonic()
+    cycle = 0
 
     while True:
         elapsed = time.monotonic() - started_at
