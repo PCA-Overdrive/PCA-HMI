@@ -90,8 +90,9 @@ def raw_level_to_display_level(raw_level):
 class VehicleCanController:
     """Bridge joystick input, CAN RX/TX, and buzzer alerts."""
 
-    def __init__(self, on_state_update=None):
+    def __init__(self, on_state_update=None, on_controller_update=None):
         self.on_state_update = on_state_update
+        self.on_controller_update = on_controller_update
         self.channel = os.getenv("CAN_CHANNEL", "can0")
         self.interface = os.getenv("CAN_INTERFACE", "socketcan")
         self.use_can_fd = env_bool("CAN_FD", True)
@@ -311,6 +312,9 @@ class VehicleCanController:
             with self.lock:
                 self.speed_cmd = speed
                 self.steer_cmd = steer
+
+            if self.on_controller_update:
+                self.on_controller_update(self.snapshot())
 
             now = time.time()
             if now - last_201 >= self.tx_201_interval:

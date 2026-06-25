@@ -24,6 +24,7 @@ if __package__:
         VehicleCanController,
         env_bool,
         raw_level_to_display_level,
+        steer_byte_to_angle,
     )
     from .bluetooth_spp import BluetoothSppServer
 else:
@@ -35,6 +36,7 @@ else:
         VehicleCanController,
         env_bool,
         raw_level_to_display_level,
+        steer_byte_to_angle,
     )
     from bluetooth_spp import BluetoothSppServer
 
@@ -54,6 +56,10 @@ SIMULATION_MODE = env_bool('SIMULATION_MODE', not CAN_ENABLED)
 state_lock = threading.Lock()
 vehicle_can_controller = None
 bluetooth_spp_server = None
+controller_state = {
+    'steering_angle': 0,
+    'steer_cmd': 127,
+}
 LANE_ANGLE_UPDATE_INTERVAL = float(os.getenv('LANE_ANGLE_UPDATE_INTERVAL', '0.05'))
 LANE_ANGLE_LOG_ENABLED = env_bool('LANE_ANGLE_LOG_ENABLED', False)
 
@@ -159,7 +165,7 @@ def apply_can_snapshot(snapshot):
 
         for idx, direction in enumerate(PDW_DIRECTIONS):
             raw_level = int(obstacle_levels[idx]) if idx < len(obstacle_levels) else 0
-            display_level = raw_level_to_display_level(raw_level)
+            display_level = max(0, min(raw_level, 4))
             pdw_data[direction]['raw_level'] = raw_level
             pdw_data[direction]['level'] = display_level
             pdw_data[direction]['distance'] = DISPLAY_DISTANCE_BY_RAW_LEVEL.get(raw_level, 20)
@@ -202,6 +208,7 @@ def get_vehicle_state():
     """현재 차량 상태 조회"""
     with state_lock:
         state = vehicle_state.copy()
+        controller = controller_state.copy()
     return jsonify({
         'speed': state['speed'],
         'gear': state['gear'],
@@ -212,6 +219,7 @@ def get_vehicle_state():
         'exit_status': state.get('exit_status', 0),
         'can_last_rx_id': state.get('can_last_rx_id'),
         'can_last_rx_at': state.get('can_last_rx_at'),
+        'steering_angle': controller['steering_angle'],
     })
 
 @app.route('/api/pdw-data', methods=['GET'])
@@ -317,6 +325,12 @@ def handle_bluetooth_exit_command(packet, command):
     if vehicle_can_controller is not None:
         vehicle_can_controller.set_auto_parking_cmd(command)
 
+def handle_controller_update(snapshot):
+    """Update local controller steering for rear guide lines."""
+    with state_lock:
+        controller_state['steer_cmd'] = int(snapshot.get('steer_cmd', 127))
+        controller_state['steering_angle'] = steer_byte_to_angle(controller_state['steer_cmd'])
+
 def start_lane_angle_updates():
     """Feed calculated camera lane angle into CAN 0x201 LineAngleCmd."""
     if not env_bool('LANE_DETECTION_ENABLED', True):
@@ -345,7 +359,10 @@ def start_background_services():
 
     can_started = False
     if CAN_ENABLED:
-        vehicle_can_controller = VehicleCanController(on_state_update=apply_can_snapshot)
+        vehicle_can_controller = VehicleCanController(
+            on_state_update=apply_can_snapshot,
+            on_controller_update=handle_controller_update,
+        )
         can_started = vehicle_can_controller.start()
 
     bluetooth_spp_server = BluetoothSppServer(

@@ -9,16 +9,16 @@ class VehicleDisplay {
     this.autoStopWarningActive = false;
     this.autoStopPopupTimeout = null;
     this.pdwZoneMap = {
-      F: "FC",
-      FR: "FR",
-      RF: "SR",
-      RB: "SR",
-      BR: "RR",
-      B: "RC",
-      BL: "RL",
-      LB: "SL",
-      LF: "SL",
-      FL: "FL",
+      F: "FrontLevelCmd",
+      FR: "FrontRightLevelCmd",
+      RF: "RightFrontLevelCmd",
+      RB: "RightBehindLevelCmd",
+      BR: "BehindRightLevelCmd",
+      B: "BehindLevelCmd",
+      BL: "BehindLeftLevelCmd",
+      LB: "LeftBehindLevelCmd",
+      LF: "LeftFrontLevelCmd",
+      FL: "FrontLeftLevelCmd",
     };
     this.init();
   }
@@ -59,7 +59,7 @@ class VehicleDisplay {
       this.updateCameraDisplay(data.rear_camera_active);
       this.updateRearGuidelines(
         data.rear_camera_active,
-        0,
+        data.steering_angle || 0,
       );
 
       // 충돌방지 상태 업데이트
