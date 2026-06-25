@@ -56,6 +56,8 @@ SIMULATION_MODE = env_bool('SIMULATION_MODE', not CAN_ENABLED)
 state_lock = threading.Lock()
 vehicle_can_controller = None
 bluetooth_spp_server = None
+LANE_ANGLE_UPDATE_INTERVAL = float(os.getenv('LANE_ANGLE_UPDATE_INTERVAL', '0.05'))
+LANE_ANGLE_LOG_ENABLED = env_bool('LANE_ANGLE_LOG_ENABLED', False)
 
 RELOAD_WATCH_FILES = (
     'css/style.css',
@@ -145,7 +147,7 @@ def update_pdw_levels():
             pdw_data[direction]['level'] = 3  # 위험
 
 def apply_can_snapshot(snapshot):
-    """Update display state from CAN RX and controller TX snapshots."""
+    """Update display state only from CAN RX snapshots."""
     obstacle_levels = snapshot.get('obstacle_levels', [])
     gear_value = int(snapshot.get('gear_status_from_ecu', 0))
     gear = CAN_GEAR_LABELS.get(gear_value, 'P')
@@ -154,7 +156,6 @@ def apply_can_snapshot(snapshot):
     with state_lock:
         vehicle_state['speed'] = int(snapshot.get('vehicle_speed', 0))
         vehicle_state['gear'] = gear
-        vehicle_state['steering_angle'] = steer_byte_to_angle(snapshot.get('steer_cmd', 127))
         vehicle_state['collision_avoidance'] = bool(pca_state)
         vehicle_state['rear_camera_active'] = (gear == 'R')
         vehicle_state['emergency_stop'] = bool(snapshot.get('emergency_stop', 0))
@@ -342,6 +343,28 @@ def handle_bluetooth_exit_command(packet, command):
     if vehicle_can_controller is not None:
         vehicle_can_controller.set_auto_parking_cmd(command)
 
+def start_lane_angle_updates():
+    """Feed calculated camera lane angle into CAN 0x201 LineAngleCmd."""
+    if not env_bool('LANE_DETECTION_ENABLED', True):
+        return
+
+    def run():
+        last_log = 0
+        while True:
+            angle = camera_manager.get_lane_angle()
+            if vehicle_can_controller is not None:
+                vehicle_can_controller.set_line_angle_cmd(angle)
+
+            if LANE_ANGLE_LOG_ENABLED:
+                now = time.time()
+                if now - last_log >= 0.5:
+                    print(f"[LANE] angle={angle}", flush=True)
+                    last_log = now
+
+            time.sleep(LANE_ANGLE_UPDATE_INTERVAL)
+
+    threading.Thread(target=run, daemon=True).start()
+
 def start_background_services():
     """Start CAN integration or simulation updates."""
     global bluetooth_spp_server, vehicle_can_controller
@@ -356,6 +379,7 @@ def start_background_services():
         on_packet=handle_bluetooth_packet,
     )
     bluetooth_spp_server.start()
+    start_lane_angle_updates()
 
     if SIMULATION_MODE and not can_started:
         sensor_thread = threading.Thread(target=simulate_sensor_data, daemon=True)

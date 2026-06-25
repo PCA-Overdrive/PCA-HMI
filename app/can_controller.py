@@ -184,7 +184,7 @@ class VehicleCanController:
 
     def set_line_angle_cmd(self, angle):
         with self.lock:
-            self.line_angle_cmd = clamp(int(angle), -32768, 32767)
+            self.line_angle_cmd = clamp(int(angle), -180, 180)
 
     def snapshot(self):
         with self.lock:
@@ -324,9 +324,6 @@ class VehicleCanController:
                 if self.can_available:
                     self._send_auto_parking(auto_parking_cmd)
                 last_300 = now
-
-            if self.on_state_update:
-                self.on_state_update(self.snapshot())
 
             time.sleep(0.005)
 
