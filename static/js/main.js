@@ -56,10 +56,10 @@ class VehicleDisplay {
       this.updateGearDisplay(data.gear);
 
       // 후방 카메라 활성화 여부
-      this.updateCameraDisplay(data.rear_camera_active, data.camera_available);
+      this.updateCameraDisplay(data.rear_camera_active);
       this.updateRearGuidelines(
         data.rear_camera_active,
-        data.steering_angle || 0,
+        0,
       );
 
       // 충돌방지 상태 업데이트
@@ -81,7 +81,7 @@ class VehicleDisplay {
     });
   }
 
-  updateCameraDisplay(isActive, isCameraAvailable) {
+  updateCameraDisplay(isActive) {
     const cameraContainer = document.getElementById("cameraContainer");
     const cameraStatus = document.getElementById("cameraStatus");
     const cameraFeed = document.getElementById("cameraFeed");
@@ -91,7 +91,7 @@ class VehicleDisplay {
       cameraStatus.style.display = "none";
     };
 
-    if (isActive && isCameraAvailable) {
+    if (isActive) {
       cameraContainer.classList.remove("inactive");
       cameraStatus.style.display = "none";
 

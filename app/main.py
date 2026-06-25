@@ -24,7 +24,6 @@ if __package__:
         VehicleCanController,
         env_bool,
         raw_level_to_display_level,
-        steer_byte_to_angle,
     )
     from .bluetooth_spp import BluetoothSppServer
 else:
@@ -36,7 +35,6 @@ else:
         VehicleCanController,
         env_bool,
         raw_level_to_display_level,
-        steer_byte_to_angle,
     )
     from bluetooth_spp import BluetoothSppServer
 
@@ -98,15 +96,10 @@ camera_stream_generator = CameraStreamGenerator(camera_manager)
 vehicle_state = {
     'speed': 0,  # km/h
     'gear': 'P',  # P, R, D
-    'steering_angle': 0,  # 조향각 (-20~20도)
     'collision_avoidance': True,  # 충돌방지 기능 On/Off
     'rear_camera_active': False,  # 후방 카메라 활성화 여부
     'emergency_stop': False,
     'exit_status': 0,
-    'exit_command': 'CANCEL_EXIT',
-    'bluetooth_last_packet': '-',
-    'auto_parking_cmd': 0,
-    'controller_connected': False,
     'can_last_rx_id': None,
     'can_last_rx_at': None,
 }
@@ -161,8 +154,6 @@ def apply_can_snapshot(snapshot):
         vehicle_state['rear_camera_active'] = (gear == 'R')
         vehicle_state['emergency_stop'] = bool(snapshot.get('emergency_stop', 0))
         vehicle_state['exit_status'] = int(snapshot.get('exit_status', 0))
-        vehicle_state['auto_parking_cmd'] = int(snapshot.get('auto_parking_cmd', 0))
-        vehicle_state['controller_connected'] = bool(snapshot.get('joystick_connected', False))
         vehicle_state['can_last_rx_id'] = snapshot.get('last_rx_id')
         vehicle_state['can_last_rx_at'] = snapshot.get('last_rx_at')
 
@@ -180,14 +171,12 @@ def simulate_sensor_data():
     # 차량 상태 시뮬레이션
     speeds = [0, 10, 20, 30, 0, 0, 0, 20, 0]
     gears = ['R', 'R', 'R', 'R', 'R', 'R', 'R', 'R', 'R']  # R단 고정 (카메라 테스트용)
-    steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
     
     cycle = 0
     while True:
         idx = cycle % len(speeds)
         vehicle_state['speed'] = speeds[idx]
         vehicle_state['gear'] = gears[idx]
-        vehicle_state['steering_angle'] = steering_angles[idx]
         vehicle_state['rear_camera_active'] = (gears[idx] == 'R')
         
         # PDW 데이터 시뮬레이션 (실제는 센서에서)
@@ -216,18 +205,13 @@ def get_vehicle_state():
     return jsonify({
         'speed': state['speed'],
         'gear': state['gear'],
-        'steering_angle': state['steering_angle'],
         'collision_avoidance': state['collision_avoidance'],
         'rear_camera_active': state['rear_camera_active'],
         'emergency_stop': state.get('emergency_stop', False),
+        'emergency_stop_activated': state.get('emergency_stop', False),
         'exit_status': state.get('exit_status', 0),
-        'exit_command': state.get('exit_command', 'CANCEL_EXIT'),
-        'bluetooth_last_packet': state.get('bluetooth_last_packet', '-'),
-        'auto_parking_cmd': state.get('auto_parking_cmd', 0),
-        'controller_connected': state.get('controller_connected', False),
         'can_last_rx_id': state.get('can_last_rx_id'),
         'can_last_rx_at': state.get('can_last_rx_at'),
-        'camera_available': camera_manager.get_frame() is not None,
     })
 
 @app.route('/api/pdw-data', methods=['GET'])
@@ -287,18 +271,16 @@ def camera_frame():
 def toggle_collision_avoidance():
     """충돌방지 기능 토글"""
     with state_lock:
-        vehicle_state['collision_avoidance'] = not vehicle_state['collision_avoidance']
         collision_avoidance = vehicle_state['collision_avoidance']
 
     if vehicle_can_controller is not None:
-        vehicle_can_controller.set_pca_enabled(collision_avoidance)
+        vehicle_can_controller.set_pca_enabled(not collision_avoidance)
 
     return jsonify({'status': 'success', 'collision_avoidance': collision_avoidance})
 
 def simulate_sensor_data():
     """Simulation data updates for display testing."""
     gears = ['P', 'R', 'D']
-    steering_angles = [-20, -10, 0, 10, 20, 10, 0, -10, -20]
     level_distances = {
         0: 0,
         1: 150,
@@ -312,7 +294,6 @@ def simulate_sensor_data():
         elapsed = time.monotonic() - started_at
         sensor_level = int(elapsed // 3) % 5
         gear = gears[int(elapsed // 10) % len(gears)]
-        steering_angle = steering_angles[int(elapsed // 3) % len(steering_angles)]
         is_auto_stopped = sensor_level >= 4
 
         with state_lock:
@@ -323,23 +304,16 @@ def simulate_sensor_data():
 
             vehicle_state['speed'] = 0 if is_auto_stopped or gear == 'P' else 10
             vehicle_state['gear'] = gear
-            vehicle_state['steering_angle'] = steering_angle
             vehicle_state['rear_camera_active'] = (gear == 'R')
 
         time.sleep(0.1)
 
 def handle_bluetooth_packet(packet):
-    """Show the latest raw Bluetooth SPP packet in the HMI."""
-    with state_lock:
-        vehicle_state['bluetooth_last_packet'] = packet
+    """Log Bluetooth SPP packets without mutating frontend RX state."""
+    print(f"Bluetooth packet handled: {packet}", flush=True)
 
 def handle_bluetooth_exit_command(packet, command):
-    """Reflect Android SPP exit commands into server state and CAN TX."""
-    with state_lock:
-        vehicle_state['exit_command'] = packet
-        vehicle_state['bluetooth_last_packet'] = packet
-        vehicle_state['auto_parking_cmd'] = command
-
+    """Send Android SPP exit commands to CAN without mutating frontend RX state."""
     if vehicle_can_controller is not None:
         vehicle_can_controller.set_auto_parking_cmd(command)
 
@@ -382,8 +356,7 @@ def start_background_services():
     start_lane_angle_updates()
 
     if SIMULATION_MODE and not can_started:
-        sensor_thread = threading.Thread(target=simulate_sensor_data, daemon=True)
-        sensor_thread.start()
+        print("Simulation mode skipped: frontend state is RX-only.", flush=True)
 
 if __name__ == '__main__':
     start_background_services()
