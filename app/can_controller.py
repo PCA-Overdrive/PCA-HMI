@@ -6,6 +6,7 @@ and RPi.GPIO happen at runtime so the Flask app can still run in development.
 """
 
 import os
+import glob
 import struct
 import threading
 import time
@@ -262,7 +263,8 @@ class VehicleCanController:
                 continue
 
             try:
-                self.pygame.event.pump()
+                if self.pygame is not None:
+                    self.pygame.event.pump()
                 speed = axis_to_byte(joystick.get_axis(1))
                 steer = axis_to_byte(joystick.get_axis(2))
                 self._read_gear_buttons(joystick)
@@ -312,9 +314,8 @@ class VehicleCanController:
             os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
             import pygame
         except ImportError:
-            print("pygame is not installed. Controller input is disabled.")
-            self.joystick_enabled = False
-            return None
+            print("pygame is not installed. Trying Linux joystick devices...", flush=True)
+            return self._get_linux_joystick()
 
         self.pygame = pygame
         pygame.init()
@@ -323,13 +324,30 @@ class VehicleCanController:
         joystick_count = pygame.joystick.get_count()
         if joystick_count == 0:
             print("Joystick not found. Waiting for controller...", flush=True)
-            return None
+            return self._get_linux_joystick()
 
         print(f"Joystick count: {joystick_count}", flush=True)
         self.joystick = pygame.joystick.Joystick(0)
         self.joystick.init()
         print(f"Joystick connected: {self.joystick.get_name()}")
         return self.joystick
+
+    def _get_linux_joystick(self):
+        for path in sorted(glob.glob("/dev/input/js*")):
+            try:
+                joystick = LinuxJoystick(path)
+            except PermissionError:
+                print(f"Joystick permission denied: {path}", flush=True)
+                continue
+            except OSError as exc:
+                print(f"Joystick open failed: {path}: {exc}", flush=True)
+                continue
+
+            print(f"Linux joystick connected: {joystick.get_name()}", flush=True)
+            return joystick
+
+        print("No /dev/input/js* joystick device found.", flush=True)
+        return None
 
     def _read_gear_buttons(self, joystick):
         with self.lock:
@@ -425,9 +443,99 @@ class VehicleCanController:
         print(
             "[CONTROLLER] "
             f"speed={speed} steer={steer} gear={gear_label}({gear}) "
-            f"pca={pca_enabled} line_angle={line_angle} can=unavailable",
+            f"pca={pca_enabled} line_angle={line_angle} can=unavailable "
+            f"{self._describe_joystick_inputs()}",
             flush=True,
         )
+
+    def _describe_joystick_inputs(self):
+        joystick = self.joystick
+        if joystick is None:
+            return ""
+
+        axes = []
+        buttons = []
+
+        try:
+            axis_count = joystick.get_numaxes()
+        except AttributeError:
+            axis_count = 8
+
+        try:
+            button_count = joystick.get_numbuttons()
+        except AttributeError:
+            button_count = 16
+
+        for index in range(axis_count):
+            try:
+                value = joystick.get_axis(index)
+            except Exception:
+                continue
+            if abs(value) > 0.08:
+                axes.append(f"{index}:{value:.2f}")
+
+        for index in range(button_count):
+            try:
+                pressed = joystick.get_button(index)
+            except Exception:
+                continue
+            if pressed:
+                buttons.append(str(index))
+
+        return f"axes=[{', '.join(axes)}] buttons=[{', '.join(buttons)}]"
+
+
+class LinuxJoystick:
+    """Minimal reader for Linux /dev/input/js* devices."""
+
+    JS_EVENT_BUTTON = 0x01
+    JS_EVENT_AXIS = 0x02
+    JS_EVENT_INIT = 0x80
+    EVENT_SIZE = struct.calcsize("IhBB")
+
+    def __init__(self, path):
+        self.path = path
+        self.axes = {}
+        self.buttons = {}
+        self.file = open(path, "rb", buffering=0)
+        os.set_blocking(self.file.fileno(), False)
+
+    def get_name(self):
+        return self.path
+
+    def get_axis(self, index):
+        self._poll()
+        return self.axes.get(index, 0.0)
+
+    def get_button(self, index):
+        self._poll()
+        return self.buttons.get(index, 0)
+
+    def get_numaxes(self):
+        self._poll()
+        return max(self.axes.keys(), default=7) + 1
+
+    def get_numbuttons(self):
+        self._poll()
+        return max(self.buttons.keys(), default=15) + 1
+
+    def _poll(self):
+        while True:
+            try:
+                data = self.file.read(self.EVENT_SIZE)
+            except BlockingIOError:
+                return
+
+            if not data or len(data) < self.EVENT_SIZE:
+                return
+
+            _, value, event_type, number = struct.unpack("IhBB", data)
+            event_type = event_type & ~self.JS_EVENT_INIT
+
+            if event_type == self.JS_EVENT_AXIS:
+                self.axes[number] = max(-1.0, min(1.0, value / 32767.0))
+            elif event_type == self.JS_EVENT_BUTTON:
+                self.buttons[number] = 1 if value else 0
 
     def _start_buzzer(self):
         try:
