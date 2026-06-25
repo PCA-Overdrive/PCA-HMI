@@ -105,6 +105,8 @@ vehicle_state = {
     'bluetooth_last_packet': '-',
     'auto_parking_cmd': 0,
     'controller_connected': False,
+    'can_last_rx_id': None,
+    'can_last_rx_at': None,
 }
 
 # PDW (Parking Distance Warning) 센서 데이터 (8개 방향)
@@ -159,6 +161,8 @@ def apply_can_snapshot(snapshot):
         vehicle_state['exit_status'] = int(snapshot.get('exit_status', 0))
         vehicle_state['auto_parking_cmd'] = int(snapshot.get('auto_parking_cmd', 0))
         vehicle_state['controller_connected'] = bool(snapshot.get('joystick_connected', False))
+        vehicle_state['can_last_rx_id'] = snapshot.get('last_rx_id')
+        vehicle_state['can_last_rx_at'] = snapshot.get('last_rx_at')
 
         for idx, direction in enumerate(PDW_DIRECTIONS):
             raw_level = int(obstacle_levels[idx]) if idx < len(obstacle_levels) else 0
@@ -219,6 +223,8 @@ def get_vehicle_state():
         'bluetooth_last_packet': state.get('bluetooth_last_packet', '-'),
         'auto_parking_cmd': state.get('auto_parking_cmd', 0),
         'controller_connected': state.get('controller_connected', False),
+        'can_last_rx_id': state.get('can_last_rx_id'),
+        'can_last_rx_at': state.get('can_last_rx_at'),
         'camera_available': camera_manager.get_frame() is not None,
     })
 

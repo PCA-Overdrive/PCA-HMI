@@ -98,6 +98,7 @@ class VehicleCanController:
         self.tx_201_interval = float(os.getenv("CAN_TX_201_INTERVAL", "0.012"))
         self.tx_300_interval = float(os.getenv("CAN_TX_300_INTERVAL", "0.1"))
         self.log_can_tx = env_bool("CAN_LOG_ENABLED", False)
+        self.log_can_rx = env_bool("CAN_RX_LOG_ENABLED", env_bool("CAN_LOG_ENABLED", False))
         self.log_interval = float(os.getenv("CAN_LOG_INTERVAL", "0.2"))
         self.joystick_enabled = env_bool("CONTROLLER_ENABLED", True)
         self.buzzer_enabled = env_bool("BUZZER_ENABLED", False)
@@ -129,6 +130,9 @@ class VehicleCanController:
         self.steer_cmd = 127
         self.last_201_log = 0
         self.last_300_log = 0
+        self.last_rx_log = 0
+        self.last_rx_id = None
+        self.last_rx_at = None
 
     @staticmethod
     def _read_optional_int(name):
@@ -199,6 +203,8 @@ class VehicleCanController:
                 "steer_cmd": self.steer_cmd,
                 "joystick_connected": self.joystick is not None,
                 "can_available": self.can_available,
+                "last_rx_id": self.last_rx_id,
+                "last_rx_at": self.last_rx_at,
             }
 
     def _init_can_bus(self):
@@ -242,6 +248,7 @@ class VehicleCanController:
 
             data = bytes(msg.data)
             changed = False
+            self._log_can_rx(msg, data)
 
             if msg.arbitration_id == 0x400 and len(data) >= 14:
                 with self.lock:
@@ -250,11 +257,17 @@ class VehicleCanController:
                     self.vehicle_speed = data[11]
                     self.gear_status_from_ecu = data[12]
                     self.emergency_stop = data[13]
+                    self.last_rx_id = msg.arbitration_id
+                    self.last_rx_at = time.time()
                 changed = True
             elif msg.arbitration_id == 0x401 and len(data) > 0:
                 with self.lock:
                     self.exit_status = data[0]
+                    self.last_rx_id = msg.arbitration_id
+                    self.last_rx_at = time.time()
                 changed = True
+            elif msg.arbitration_id == 0x400:
+                print(f"CAN RX 0x400 ignored: expected >=14 bytes, got {len(data)}", flush=True)
 
             if changed and self.on_state_update:
                 self.on_state_update(self.snapshot())
@@ -434,6 +447,23 @@ class VehicleCanController:
             "[CAN TX 0x201] "
             f"speed={speed} steer={steer} gear={gear_label}({gear}) "
             f"pca={pca_enabled} line_angle={line_angle} data=[{data_hex}]",
+            flush=True,
+        )
+
+    def _log_can_rx(self, msg, data):
+        if not self.log_can_rx:
+            return
+
+        now = time.time()
+        if now - self.last_rx_log < self.log_interval:
+            return
+
+        self.last_rx_log = now
+        data_hex = " ".join(f"{byte:02X}" for byte in data)
+        frame_type = "FD" if getattr(msg, "is_fd", False) else "CAN"
+        print(
+            f"[CAN RX 0x{msg.arbitration_id:X}] type={frame_type} "
+            f"len={len(data)} data=[{data_hex}]",
             flush=True,
         )
 
