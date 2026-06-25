@@ -123,7 +123,7 @@ class VehicleDisplay {
     const guideLines = document.getElementById("rearGuideLines");
     if (!overlay || !guideLines) return;
 
-    const normalizedAngle = this.clamp(Number(steeringAngle) || 0, -20, 20);
+    const normalizedAngle = this.clamp(Number(steeringAngle) || 0, -60, 60);
     if (!isActive) {
       overlay.classList.remove("active");
       this.lastGuideAngle = null;
@@ -141,7 +141,7 @@ class VehicleDisplay {
     this.lastGuideAngle = normalizedAngle;
     guideLines.replaceChildren();
 
-    const turnShift = (normalizedAngle / 20) * 170;
+    const turnShift = (normalizedAngle / 60) * 170;
     const leftBottom = { x: 250, y: 590 };
     const rightBottom = { x: 750, y: 590 };
     const leftTop = { x: 405 + turnShift, y: 70 };

@@ -76,7 +76,7 @@ def axis_to_byte(axis_value):
 
 
 def steer_byte_to_angle(steer_byte):
-    return int(round(((int(steer_byte) - 127) / 128.0) * 20))
+    return int(round(((int(steer_byte) - 127) / 128.0) * 60))
 
 
 def raw_level_to_display_level(raw_level):
@@ -503,6 +503,7 @@ class VehicleCanController:
         print(
             "[CONTROLLER] "
             f"speed={speed} steer={steer} gear={gear_label}({gear}) "
+            f"guide_angle={steer_byte_to_angle(steer)} "
             f"pca={pca_enabled} line_angle={line_angle} can=unavailable "
             f"{self._describe_joystick_inputs()}",
             flush=True,
