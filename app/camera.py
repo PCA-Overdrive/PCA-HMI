@@ -26,10 +26,20 @@ except ImportError:
 class CameraManager:
     """Manage a Pi/USB camera stream and estimate the current lane angle."""
 
-    def __init__(self, source=0, resolution=(1280, 720), fps=30):
+    def __init__(
+        self,
+        source=0,
+        resolution=(1280, 720),
+        fps=30,
+        backend=None,
+        lane_detection_enabled=None,
+        name="Camera",
+    ):
         self.source = source
         self.resolution = resolution
         self.fps = fps
+        self.backend = backend
+        self.name = name
         self.frame = None
         self.is_running = False
         self.lock = threading.Lock()
@@ -38,7 +48,9 @@ class CameraManager:
         self.lane_angle = 0
         self.lane_angle_updated_at = None
         self.parking_line_result = None
-        self.lane_detection_enabled = self._env_bool("LANE_DETECTION_ENABLED", True)
+        if lane_detection_enabled is None:
+            lane_detection_enabled = self._env_bool("LANE_DETECTION_ENABLED", True)
+        self.lane_detection_enabled = lane_detection_enabled
         self.lane_detection_interval = float(os.getenv("LANE_DETECTION_INTERVAL", "0.1"))
         self.parking_line_log_interval = float(os.getenv("PARKING_LINE_LOG_INTERVAL", "0.5"))
         self.parking_line_log_enabled = self._env_bool("PARKING_LINE_LOG_ENABLED", False)
@@ -49,13 +61,13 @@ class CameraManager:
         try:
             if self._source_disabled(source):
                 self.camera = None
-                print("Camera disabled by CAMERA_SOURCE.", flush=True)
+                print(f"{self.name} disabled by source.", flush=True)
             elif source == "pi":
                 self._init_pi_camera()
             else:
                 self._init_opencv_camera()
         except Exception as exc:
-            print(f"Camera init failed: {exc}", flush=True)
+            print(f"{self.name} init failed: {exc}", flush=True)
             self.camera = None
 
     @staticmethod
@@ -80,13 +92,15 @@ class CameraManager:
         self.camera = PiCamera()
         self.camera.resolution = self.resolution
         self.camera.framerate = self.fps
-        print(f"Pi camera initialized: {self.resolution} @ {self.fps}fps", flush=True)
+        print(f"{self.name} initialized: Pi {self.resolution} @ {self.fps}fps", flush=True)
 
     def _init_opencv_camera(self):
         if cv2 is None:
             raise RuntimeError("OpenCV is not available")
 
         self.camera = self._open_video_capture()
+        if not self.camera.isOpened():
+            raise RuntimeError(f"OpenCV could not open source {self.source!r}")
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
         self.camera.set(cv2.CAP_PROP_FPS, self.fps)
@@ -95,18 +109,41 @@ class CameraManager:
         except Exception:
             pass
 
-        print(f"OpenCV camera initialized: {self.resolution} @ {self.fps}fps", flush=True)
+        print(
+            f"{self.name} initialized: OpenCV source={self.source!r} "
+            f"{self.resolution} @ {self.fps}fps",
+            flush=True,
+        )
 
     def _open_video_capture(self):
-        backend = os.getenv("CAMERA_BACKEND", "").strip().upper()
+        backend = (self.backend or os.getenv("CAMERA_BACKEND", "")).strip().upper()
+        if not backend and self._looks_like_windows_device_name(self.source):
+            backend = "DSHOW"
         backend_map = {
             "ANY": cv2.CAP_ANY,
             "MSMF": cv2.CAP_MSMF,
             "DSHOW": cv2.CAP_DSHOW,
         }
+        source = self._opencv_source_for_backend(self.source, backend)
         if backend in backend_map:
-            return cv2.VideoCapture(self.source, backend_map[backend])
-        return cv2.VideoCapture(self.source)
+            return cv2.VideoCapture(source, backend_map[backend])
+        return cv2.VideoCapture(source)
+
+    def _opencv_source_for_backend(self, source, backend):
+        if backend == "DSHOW" and isinstance(source, str):
+            normalized = source.strip()
+            if normalized and not normalized.lower().startswith("video="):
+                return f"video={normalized}"
+        return source
+
+    @staticmethod
+    def _looks_like_windows_device_name(source):
+        if os.name != "nt" or not isinstance(source, str):
+            return False
+        normalized = source.strip()
+        if not normalized or normalized.lower() == "pi":
+            return False
+        return not any(separator in normalized for separator in ("/", "\\", ":"))
 
     def start(self):
         if self.camera is None:

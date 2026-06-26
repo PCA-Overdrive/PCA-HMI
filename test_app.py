@@ -10,6 +10,8 @@ import cv2
 import numpy as np
 
 os.environ.setdefault('CAMERA_SOURCE', '-1')
+os.environ.setdefault('LANE_CAMERA_SOURCE', '-1')
+os.environ.setdefault('REAR_CAMERA_SOURCE', '-1')
 
 from app.main import app, vehicle_state, pdw_data
 from app.can_interface import DISTANCE_LEVEL_FIELDS, decode_can_frame

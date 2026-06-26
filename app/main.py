@@ -82,14 +82,23 @@ def get_asset_version(filename):
 def get_reload_version():
     return max(get_asset_version(filename) for filename in RELOAD_WATCH_FILES)
 
-def get_camera_source():
-    source = os.getenv('CAMERA_SOURCE', '0').strip()
+def parse_camera_source(source):
     if source.lower() == 'pi':
         return 'pi'
     try:
         return int(source)
     except ValueError:
         return source
+
+def get_camera_source(source_env, default_source):
+    source = os.getenv(source_env)
+    if source is None:
+        source = os.getenv('CAMERA_SOURCE', default_source)
+    return parse_camera_source(source.strip())
+
+def get_camera_backend(backend_env):
+    backend = os.getenv(backend_env, os.getenv('CAMERA_BACKEND', '')).strip()
+    return backend or None
 
 @app.context_processor
 def static_asset_helpers():
@@ -106,11 +115,33 @@ def disable_static_cache(response):
         response.headers['Expires'] = '0'
     return response
 
-# 카메라 관리자 초기화 (C920 웹캠 사용)
-# 해상도를 낮춰서 프레임레이트 향상
-camera_manager = CameraManager(source=get_camera_source(), resolution=(640, 480), fps=60)
-camera_manager.start()
-camera_stream_generator = CameraStreamGenerator(camera_manager)
+# Camera managers:
+# - lane_camera_manager: HCAM01L for parking-line/lane-angle logic.
+# - rear_camera_manager: HD PRO Webcam C920 for the R-gear rear view.
+lane_camera_manager = CameraManager(
+    source=get_camera_source('LANE_CAMERA_SOURCE', 'HCAM01L'),
+    resolution=(640, 480),
+    fps=60,
+    backend=get_camera_backend('LANE_CAMERA_BACKEND'),
+    lane_detection_enabled=env_bool('LANE_DETECTION_ENABLED', True),
+    name='Lane camera',
+)
+lane_camera_manager.start()
+lane_camera_stream_generator = CameraStreamGenerator(lane_camera_manager)
+
+rear_camera_manager = CameraManager(
+    source=get_camera_source('REAR_CAMERA_SOURCE', 'HD PRO Webcam C920'),
+    resolution=(640, 480),
+    fps=60,
+    backend=get_camera_backend('REAR_CAMERA_BACKEND'),
+    lane_detection_enabled=False,
+    name='Rear camera',
+)
+rear_camera_manager.start()
+rear_camera_stream_generator = CameraStreamGenerator(rear_camera_manager)
+
+# Backward-compatible alias for modules that import camera_manager directly.
+camera_manager = rear_camera_manager
 
 # 차량 상태 데이터
 vehicle_state = {
@@ -276,11 +307,11 @@ def camera_stream():
     """후방 카메라 스트림 (Motion JPEG)
     C920 웹캠에서 실시간 스트림 제공
     """
-    if camera_manager.get_frame() is None:
+    if rear_camera_manager.get_frame() is None:
         return redirect(url_for('static', filename='images/CAMERA_NOT_FUN.png'))
 
     def generate():
-        for frame in camera_stream_generator.generate():
+        for frame in rear_camera_stream_generator.generate():
             yield frame
     
     return app.response_class(
@@ -291,7 +322,7 @@ def camera_stream():
 @app.route('/api/camera-frame')
 def camera_frame():
     """단일 카메라 프레임을 JPEG로 반환"""
-    frame = camera_manager.get_mjpeg_frame()
+    frame = rear_camera_manager.get_mjpeg_frame()
     if frame:
         response = app.make_response(frame)
         response.headers['Content-Type'] = 'image/jpeg'
@@ -305,7 +336,7 @@ def camera_frame():
 def parking_line_debug_stream():
     """Camera stream with the selected parking line and angle overlay."""
     def generate():
-        for frame in camera_stream_generator.generate_debug():
+        for frame in lane_camera_stream_generator.generate_debug():
             yield frame
 
     return app.response_class(
@@ -316,7 +347,7 @@ def parking_line_debug_stream():
 @app.route('/api/parking-line-debug-frame')
 def parking_line_debug_frame():
     """Single JPEG frame with the selected parking line and angle overlay."""
-    frame = camera_manager.get_debug_mjpeg_frame()
+    frame = lane_camera_manager.get_debug_mjpeg_frame()
     if frame:
         response = app.make_response(frame)
         response.headers['Content-Type'] = 'image/jpeg'
@@ -327,17 +358,17 @@ def parking_line_debug_frame():
 @app.route('/api/parking-line-angle')
 def get_parking_line_angle():
     """Return the current white reference line angle from the camera frame."""
-    result = camera_manager.get_parking_line_result()
+    result = lane_camera_manager.get_parking_line_result()
     if result is None:
         return jsonify({
             'detected': False,
             'y_axis_angle_deg': None,
-            'line_angle_cmd': camera_manager.get_lane_angle(),
-            'timestamp': camera_manager.get_lane_angle_updated_at(),
+            'line_angle_cmd': lane_camera_manager.get_lane_angle(),
+            'timestamp': lane_camera_manager.get_lane_angle_updated_at(),
         })
 
     payload = result.copy()
-    payload['line_angle_cmd'] = camera_manager.get_lane_angle()
+    payload['line_angle_cmd'] = lane_camera_manager.get_lane_angle()
     return jsonify(payload)
 
 @app.route('/api/toggle-collision-avoidance', methods=['POST'])
@@ -414,7 +445,7 @@ def start_lane_angle_updates():
     def run():
         last_log = 0
         while True:
-            angle = camera_manager.get_lane_angle()
+            angle = lane_camera_manager.get_lane_angle()
             if vehicle_can_controller is not None:
                 vehicle_can_controller.set_line_angle_cmd(angle)
 
