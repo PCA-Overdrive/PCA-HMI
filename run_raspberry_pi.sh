@@ -42,7 +42,9 @@ setup_can() {
 
   local channel="${CAN_CHANNEL:-can0}"
   local bitrate="${CAN_BITRATE:-500000}"
+  local sample_point="${CAN_SAMPLE_POINT:-0.800}"
   local dbitrate="${CAN_DBITRATE:-2000000}"
+  local dsample_point="${CAN_DSAMPLE_POINT:-0.800}"
   local restart_ms="${CAN_RESTART_MS:-100}"
   local txqueuelen="${CAN_TXQUEUELEN:-1000}"
 
@@ -61,14 +63,18 @@ setup_can() {
   sudo ip link set "$channel" txqueuelen "$txqueuelen"
 
   if is_true "${CAN_FD:-False}"; then
-    sudo ip link set "$channel" type can bitrate "$bitrate" dbitrate "$dbitrate" fd on restart-ms "$restart_ms"
-    echo "CAN FD: channel=$channel bitrate=$bitrate dbitrate=$dbitrate restart-ms=$restart_ms txqueuelen=$txqueuelen"
+    sudo ip link set "$channel" up type can \
+      bitrate "$bitrate" sample-point "$sample_point" \
+      dbitrate "$dbitrate" dsample-point "$dsample_point" \
+      fd on restart-ms "$restart_ms"
+    echo "CAN FD: channel=$channel bitrate=$bitrate sample-point=$sample_point dbitrate=$dbitrate dsample-point=$dsample_point restart-ms=$restart_ms txqueuelen=$txqueuelen"
   else
-    sudo ip link set "$channel" type can bitrate "$bitrate" restart-ms "$restart_ms"
-    echo "Classical CAN: channel=$channel bitrate=$bitrate restart-ms=$restart_ms txqueuelen=$txqueuelen"
+    sudo ip link set "$channel" up type can \
+      bitrate "$bitrate" sample-point "$sample_point" \
+      restart-ms "$restart_ms"
+    echo "Classical CAN: channel=$channel bitrate=$bitrate sample-point=$sample_point restart-ms=$restart_ms txqueuelen=$txqueuelen"
   fi
 
-  sudo ip link set "$channel" up
   ip -details link show "$channel"
 }
 
