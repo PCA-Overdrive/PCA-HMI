@@ -47,7 +47,10 @@ class CameraManager:
         self.parking_line_detector = ParkingLineDetector() if ParkingLineDetector else None
 
         try:
-            if source == "pi":
+            if self._source_disabled(source):
+                self.camera = None
+                print("Camera disabled by CAMERA_SOURCE.", flush=True)
+            elif source == "pi":
                 self._init_pi_camera()
             else:
                 self._init_opencv_camera()
@@ -61,6 +64,10 @@ class CameraManager:
         if value is None:
             return default
         return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _source_disabled(source):
+        return str(source).strip().lower() in {"-1", "none", "disabled", "off", "false"}
 
     def _init_pi_camera(self):
         try:
@@ -168,14 +175,20 @@ class CameraManager:
             return self._get_placeholder_frame()
         return frame
 
-    def _get_placeholder_frame(self):
+    def get_debug_mjpeg_frame(self):
+        frame = self.get_frame()
+        if frame is None:
+            return self._get_placeholder_frame("Camera Not Available")
+        return self._draw_parking_line_overlay(frame)
+
+    def _get_placeholder_frame(self, message="Camera Not Available"):
         if cv2 is None or np is None:
             return None
 
         img = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
         cv2.putText(
             img,
-            "Camera Not Available",
+            message,
             (50, 100),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -183,6 +196,66 @@ class CameraManager:
             2,
         )
         _, jpeg = cv2.imencode(".jpg", img)
+        return jpeg.tobytes()
+
+    def _draw_parking_line_overlay(self, jpeg_bytes):
+        if cv2 is None or np is None:
+            return jpeg_bytes
+
+        frame_array = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
+        if frame is None:
+            return jpeg_bytes
+
+        result = self.get_parking_line_result()
+        height, width = frame.shape[:2]
+        cv2.line(frame, (width // 2, 0), (width // 2, height), (255, 180, 0), 1)
+        cv2.line(frame, (0, height // 2), (width, height // 2), (255, 180, 0), 1)
+
+        if result and result.get("detected"):
+            line = result.get("reference_line")
+            angle = result.get("y_axis_angle_deg")
+            if line:
+                x1, y1, x2, y2 = [int(value) for value in line]
+                cv2.line(frame, (x1, y1), (x2, y2), (0, 255, 255), 6)
+                cv2.circle(frame, (x1, y1), 7, (0, 255, 0), -1)
+                cv2.circle(frame, (x2, y2), 7, (0, 0, 255), -1)
+                dx = x2 - x1
+                dy = y2 - y1
+                length = max(math.hypot(dx, dy), 1.0)
+                normal_x = -dy / length
+                normal_y = dx / length
+                center_x = int(round((x1 + x2) / 2))
+                center_y = int(round((y1 + y2) / 2))
+                arrow_length = int(max(70, min(width, height) * 0.18))
+                end_x = int(round(center_x + normal_x * arrow_length))
+                end_y = int(round(center_y + normal_y * arrow_length))
+                cv2.arrowedLine(
+                    frame,
+                    (center_x, center_y),
+                    (end_x, end_y),
+                    (255, 0, 255),
+                    4,
+                    tipLength=0.22,
+                )
+            label = f"normal-y {angle:+.2f} deg" if angle is not None else "normal-y n/a"
+            color = (0, 255, 255)
+        else:
+            label = "parking line not detected"
+            color = (0, 0, 255)
+
+        cv2.rectangle(frame, (12, 14), (360, 58), (0, 0, 0), -1)
+        cv2.putText(
+            frame,
+            label,
+            (24, 44),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            color,
+            2,
+        )
+
+        _, jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality])
         return jpeg.tobytes()
 
     def _update_lane_angle_from_jpeg(self, jpeg_bytes):
@@ -280,6 +353,21 @@ class CameraStreamGenerator:
     def generate(self):
         while True:
             frame = self.camera.get_mjpeg_frame()
+            if frame:
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: "
+                    + str(len(frame)).encode()
+                    + b"\r\n\r\n"
+                    + frame
+                    + b"\r\n"
+                )
+            time.sleep(1.0 / self.camera.fps)
+
+    def generate_debug(self):
+        while True:
+            frame = self.camera.get_debug_mjpeg_frame()
             if frame:
                 yield (
                     b"--frame\r\n"
