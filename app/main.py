@@ -27,6 +27,7 @@ if __package__:
         steer_axis_to_angle,
     )
     from .bluetooth_spp import BluetoothSppServer
+    from .can_interface import DISTANCE_LEVEL_FIELDS
 else:
     from camera import CameraManager, CameraStreamGenerator
     from can_controller import (
@@ -39,6 +40,7 @@ else:
         steer_axis_to_angle,
     )
     from bluetooth_spp import BluetoothSppServer
+    from can_interface import DISTANCE_LEVEL_FIELDS
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -80,6 +82,15 @@ def get_asset_version(filename):
 def get_reload_version():
     return max(get_asset_version(filename) for filename in RELOAD_WATCH_FILES)
 
+def get_camera_source():
+    source = os.getenv('CAMERA_SOURCE', '0').strip()
+    if source.lower() == 'pi':
+        return 'pi'
+    try:
+        return int(source)
+    except ValueError:
+        return source
+
 @app.context_processor
 def static_asset_helpers():
     def static_url(filename):
@@ -97,7 +108,7 @@ def disable_static_cache(response):
 
 # 카메라 관리자 초기화 (C920 웹캠 사용)
 # 해상도를 낮춰서 프레임레이트 향상
-camera_manager = CameraManager(source=0, resolution=(640, 480), fps=60)
+camera_manager = CameraManager(source=get_camera_source(), resolution=(640, 480), fps=60)
 camera_manager.start()
 camera_stream_generator = CameraStreamGenerator(camera_manager)
 
@@ -126,6 +137,7 @@ pdw_data = {
     'LF': {'distance': 150, 'level': 0, 'raw_level': 0},  # B8 Left Front
     'FL': {'distance': 150, 'level': 0, 'raw_level': 0},  # B9 Front Left
 }
+PDW_API_FIELD_BY_DIRECTION = dict(zip(PDW_DIRECTIONS, DISTANCE_LEVEL_FIELDS))
 
 # 위험 단계: 0=감지안됨, 1=안전, 2=주의, 3=근접, 4=위험
 RISK_LEVELS = {
@@ -236,7 +248,8 @@ def get_pdw_data():
 
     for direction, data in pdw_snapshot.items():
         level = data['level']
-        pdw_with_levels[direction] = {
+        api_direction = PDW_API_FIELD_BY_DIRECTION.get(direction, direction)
+        pdw_with_levels[api_direction] = {
             'distance': data['distance'],
             'level': level,
             'raw_level': data.get('raw_level', level),
@@ -280,16 +293,59 @@ def camera_frame():
         # 카메라를 사용할 수 없을 때 기본 이미지 반환
         return jsonify({'error': 'Camera not available'}), 503
 
+@app.route('/api/parking-line-debug-stream')
+def parking_line_debug_stream():
+    """Camera stream with the selected parking line and angle overlay."""
+    def generate():
+        for frame in camera_stream_generator.generate_debug():
+            yield frame
+
+    return app.response_class(
+        generate(),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+@app.route('/api/parking-line-debug-frame')
+def parking_line_debug_frame():
+    """Single JPEG frame with the selected parking line and angle overlay."""
+    frame = camera_manager.get_debug_mjpeg_frame()
+    if frame:
+        response = app.make_response(frame)
+        response.headers['Content-Type'] = 'image/jpeg'
+        response.headers['Content-Length'] = len(frame)
+        return response
+    return jsonify({'error': 'Camera not available'}), 503
+
+@app.route('/api/parking-line-angle')
+def get_parking_line_angle():
+    """Return the current white reference line angle from the camera frame."""
+    result = camera_manager.get_parking_line_result()
+    if result is None:
+        return jsonify({
+            'detected': False,
+            'y_axis_angle_deg': None,
+            'line_angle_cmd': camera_manager.get_lane_angle(),
+            'timestamp': camera_manager.get_lane_angle_updated_at(),
+        })
+
+    payload = result.copy()
+    payload['line_angle_cmd'] = camera_manager.get_lane_angle()
+    return jsonify(payload)
+
 @app.route('/api/toggle-collision-avoidance', methods=['POST'])
 def toggle_collision_avoidance():
     """충돌방지 기능 토글"""
     with state_lock:
         collision_avoidance = vehicle_state['collision_avoidance']
+        new_collision_avoidance = not collision_avoidance
 
     if vehicle_can_controller is not None:
-        vehicle_can_controller.set_pca_enabled(not collision_avoidance)
+        vehicle_can_controller.set_pca_enabled(new_collision_avoidance)
+    else:
+        with state_lock:
+            vehicle_state['collision_avoidance'] = new_collision_avoidance
 
-    return jsonify({'status': 'success', 'collision_avoidance': collision_avoidance})
+    return jsonify({'status': 'success', 'collision_avoidance': new_collision_avoidance})
 
 def simulate_sensor_data():
     """Simulation data updates for display testing."""
