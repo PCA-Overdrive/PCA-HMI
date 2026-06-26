@@ -13,7 +13,7 @@ os.environ.setdefault('CAMERA_SOURCE', '-1')
 os.environ.setdefault('LANE_CAMERA_SOURCE', '-1')
 os.environ.setdefault('REAR_CAMERA_SOURCE', '-1')
 
-from app.main import app, vehicle_state, pdw_data
+from app.main import app, camera_manager, lane_camera_manager, pdw_data, rear_camera_manager, vehicle_state
 from app.can_interface import DISTANCE_LEVEL_FIELDS, decode_can_frame
 from app.can_controller import VehicleCanController
 from app.parking_line_detector import ParkingLineDetector
@@ -104,6 +104,14 @@ class TestVehicleDisplay(unittest.TestCase):
         for sensor_data in data.values():
             self.assertIn(sensor_data['level'], [0, 1, 2, 3, 4])
             self.assertIn(sensor_data['color'], valid_colors)
+
+    def test_lane_and_rear_cameras_are_separated(self):
+        """차선 인식과 후방 표시 카메라가 분리되어야 함."""
+        self.assertIs(camera_manager, lane_camera_manager)
+        self.assertEqual(lane_camera_manager.source, -1)
+        self.assertEqual(rear_camera_manager.source, -1)
+        self.assertTrue(lane_camera_manager.lane_detection_enabled)
+        self.assertFalse(rear_camera_manager.lane_detection_enabled)
 
 
 class SensorSimulationTest(unittest.TestCase):

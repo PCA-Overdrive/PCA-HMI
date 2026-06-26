@@ -140,8 +140,9 @@ rear_camera_manager = CameraManager(
 rear_camera_manager.start()
 rear_camera_stream_generator = CameraStreamGenerator(rear_camera_manager)
 
-# Backward-compatible alias for modules that import camera_manager directly.
-camera_manager = rear_camera_manager
+# Backward-compatible alias for lane/parking-line logic that imported the
+# original single camera manager directly.
+camera_manager = lane_camera_manager
 
 # 차량 상태 데이터
 vehicle_state = {
