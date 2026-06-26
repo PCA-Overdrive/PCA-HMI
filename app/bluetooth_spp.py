@@ -25,6 +25,12 @@ EXIT_COMMANDS = {
     "CANCEL_EXIT": 4,
 }
 
+EXIT_STATUS_MESSAGES = {
+    0x01: "EXIT_IN_PROGRESS",
+    0x02: "EXIT_DONE",
+    0x03: "EXIT_CANCELED",
+}
+
 
 class BluetoothSppServer:
     def __init__(self, on_exit_command=None, on_packet=None):
@@ -37,6 +43,9 @@ class BluetoothSppServer:
         self.restart_delay = float(os.getenv("BLUETOOTH_RESTART_DELAY", "2"))
         self.running = False
         self.thread = None
+        self.client_sock = None
+        self.client_lock = threading.Lock()
+        self.exit_status = None
 
     def start(self):
         if not self.enabled:
@@ -66,11 +75,16 @@ class BluetoothSppServer:
 
                 client_sock, client_info = server_sock.accept()
                 print(f"Android connected: {client_info}", flush=True)
+                with self.client_lock:
+                    self.client_sock = client_sock
                 self._handle_client(client_sock)
             except Exception as exc:
                 if self.running:
                     print(f"Bluetooth SPP error: {exc}", flush=True)
             finally:
+                with self.client_lock:
+                    if self.client_sock is client_sock:
+                        self.client_sock = None
                 self._close_socket(client_sock)
                 self._close_socket(server_sock)
 
@@ -135,10 +149,26 @@ class BluetoothSppServer:
         if self.on_exit_command:
             self.on_exit_command(packet, command)
 
-        if packet == "CANCEL_EXIT":
-            self._send_line(client_sock, "EXIT_CANCELED")
-        else:
-            self._send_line(client_sock, "EXIT_DONE")
+    def update_exit_status(self, status):
+        """Forward changed CAN 0x401 exitStatus values to the SPP client."""
+        status = int(status) & 0xFF
+
+        with self.client_lock:
+            if status == self.exit_status:
+                return
+            self.exit_status = status
+            message = EXIT_STATUS_MESSAGES.get(status)
+
+        if message:
+            self._send_to_connected_client(message)
+
+    def _send_to_connected_client(self, message):
+        with self.client_lock:
+            client_sock = self.client_sock
+            if client_sock is None:
+                print(f"Bluetooth SPP skipped {message}: no Android client connected", flush=True)
+                return
+            self._send_line(client_sock, message)
 
     @staticmethod
     def _send_line(sock, message):

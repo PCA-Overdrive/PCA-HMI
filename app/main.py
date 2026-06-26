@@ -185,6 +185,14 @@ def apply_can_snapshot(snapshot):
             pdw_data[direction]['level'] = display_level
             pdw_data[direction]['distance'] = DISPLAY_DISTANCE_BY_RAW_LEVEL.get(raw_level, 20)
 
+    # Bluetooth exit-status responses come only from the ECU's CAN 0x401
+    # exitStatus indication, never from an Android exit command.
+    if (
+        snapshot.get('last_rx_id') == 0x401
+        and bluetooth_spp_server is not None
+    ):
+        bluetooth_spp_server.update_exit_status(snapshot.get('exit_status', 0))
+
 def simulate_sensor_data():
     """센서 데이터 시뮬레이션 (실제로는 GPIO/센서에서 읽음)"""
     global vehicle_state, pdw_data
