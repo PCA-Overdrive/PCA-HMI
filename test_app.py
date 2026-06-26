@@ -14,6 +14,7 @@ os.environ.setdefault('LANE_CAMERA_SOURCE', '-1')
 os.environ.setdefault('REAR_CAMERA_SOURCE', '-1')
 
 from app.main import app, camera_manager, lane_camera_manager, pdw_data, rear_camera_manager, vehicle_state
+from app.camera import CameraManager
 from app.can_interface import DISTANCE_LEVEL_FIELDS, decode_can_frame
 from app.can_controller import VehicleCanController
 from app.parking_line_detector import ParkingLineDetector
@@ -176,6 +177,28 @@ class SensorSimulationTest(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(controller.exit_status, 1)
         self.assertEqual(controller.auto_parking_cmd, 4)
+
+
+class CameraManagerSourceTest(unittest.TestCase):
+    """Camera source resolution tests."""
+
+    def test_usb_source_resolves_by_vid_pid(self):
+        manager = object.__new__(CameraManager)
+        manager._find_video_devices_by_usb_id = lambda vid, pid: ["/dev/video2", "/dev/video3"]
+
+        self.assertEqual(
+            manager._video_devices_for_usb_source("usb:4c4a:4a55"),
+            ["/dev/video2", "/dev/video3"],
+        )
+
+    def test_usb_source_can_select_video_node_index(self):
+        manager = object.__new__(CameraManager)
+        manager._find_video_devices_by_usb_id = lambda vid, pid: ["/dev/video0", "/dev/video1"]
+
+        self.assertEqual(
+            manager._video_devices_for_usb_source("usb:046d:08e5:1"),
+            ["/dev/video1"],
+        )
 
 
 class ParkingLineDetectorTest(unittest.TestCase):

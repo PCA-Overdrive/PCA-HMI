@@ -4,6 +4,7 @@ import math
 import os
 import threading
 import time
+from glob import glob
 from io import BytesIO
 
 try:
@@ -98,19 +99,15 @@ class CameraManager:
         if cv2 is None:
             raise RuntimeError("OpenCV is not available")
 
+        self.opened_source = None
         self.camera = self._open_video_capture()
         if not self.camera.isOpened():
             raise RuntimeError(f"OpenCV could not open source {self.source!r}")
-        self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
-        self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
-        self.camera.set(cv2.CAP_PROP_FPS, self.fps)
-        try:
-            self.camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
+        self._configure_capture(self.camera)
 
         print(
             f"{self.name} initialized: OpenCV source={self.source!r} "
+            f"opened={self.opened_source!r} "
             f"{self.resolution} @ {self.fps}fps",
             flush=True,
         )
@@ -124,10 +121,35 @@ class CameraManager:
             "MSMF": cv2.CAP_MSMF,
             "DSHOW": cv2.CAP_DSHOW,
         }
-        source = self._opencv_source_for_backend(self.source, backend)
-        if backend in backend_map:
-            return cv2.VideoCapture(source, backend_map[backend])
-        return cv2.VideoCapture(source)
+        requires_frame_probe = self._is_usb_source_spec(self.source)
+        failed_capture = None
+        for candidate in self._opencv_source_candidates(self.source, backend):
+            if backend in backend_map:
+                capture = cv2.VideoCapture(candidate, backend_map[backend])
+            else:
+                capture = cv2.VideoCapture(candidate)
+
+            if capture.isOpened():
+                self._configure_capture(capture)
+                if requires_frame_probe and not self._capture_can_grab_frame(capture):
+                    if failed_capture is not None:
+                        failed_capture.release()
+                    failed_capture = capture
+                    continue
+                self.opened_source = candidate
+                return capture
+            if failed_capture is not None:
+                failed_capture.release()
+            failed_capture = capture
+
+        self.opened_source = None
+        return failed_capture if failed_capture is not None else cv2.VideoCapture(self.source)
+
+    def _opencv_source_candidates(self, source, backend):
+        candidates = self._video_devices_for_usb_source(source)
+        if not candidates:
+            candidates = [source]
+        return [self._opencv_source_for_backend(candidate, backend) for candidate in candidates]
 
     def _opencv_source_for_backend(self, source, backend):
         if backend == "DSHOW" and isinstance(source, str):
@@ -135,6 +157,81 @@ class CameraManager:
             if normalized and not normalized.lower().startswith("video="):
                 return f"video={normalized}"
         return source
+
+    def _video_devices_for_usb_source(self, source):
+        if not isinstance(source, str):
+            return []
+
+        normalized = source.strip().lower()
+        if not self._is_usb_source_spec(normalized):
+            return []
+
+        parts = normalized.split(":")
+        if len(parts) not in {3, 4}:
+            raise ValueError("USB camera source must be usb:VID:PID or usb:VID:PID:INDEX")
+
+        vid = parts[1].zfill(4)
+        pid = parts[2].zfill(4)
+        selected_index = int(parts[3]) if len(parts) == 4 else None
+        devices = self._find_video_devices_by_usb_id(vid, pid)
+
+        if selected_index is not None:
+            try:
+                return [devices[selected_index]]
+            except IndexError as exc:
+                raise RuntimeError(
+                    f"No video device index {selected_index} for USB camera {vid}:{pid}"
+                ) from exc
+
+        if not devices:
+            raise RuntimeError(f"No video device found for USB camera {vid}:{pid}")
+        return devices
+
+    def _find_video_devices_by_usb_id(self, vid, pid):
+        matches = []
+        for video_path in sorted(glob("/sys/class/video4linux/video*")):
+            device_path = os.path.realpath(os.path.join(video_path, "device"))
+            usb_id = self._read_usb_id_from_device_path(device_path)
+            if usb_id != (vid, pid):
+                continue
+
+            video_name = os.path.basename(video_path)
+            matches.append(os.path.join("/dev", video_name))
+        return matches
+
+    @staticmethod
+    def _is_usb_source_spec(source):
+        return isinstance(source, str) and source.strip().lower().startswith("usb:")
+
+    def _configure_capture(self, capture):
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+        capture.set(cv2.CAP_PROP_FPS, self.fps)
+        try:
+            capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
+
+    def _capture_can_grab_frame(self, capture):
+        for _ in range(5):
+            if capture.grab():
+                return True
+            time.sleep(0.02)
+        return False
+
+    def _read_usb_id_from_device_path(self, device_path):
+        current = device_path
+        while current and current != os.path.dirname(current):
+            vendor_path = os.path.join(current, "idVendor")
+            product_path = os.path.join(current, "idProduct")
+            if os.path.exists(vendor_path) and os.path.exists(product_path):
+                with open(vendor_path, "r", encoding="ascii") as vendor_file:
+                    vendor = vendor_file.read().strip().lower()
+                with open(product_path, "r", encoding="ascii") as product_file:
+                    product = product_file.read().strip().lower()
+                return vendor, product
+            current = os.path.dirname(current)
+        return None
 
     @staticmethod
     def _looks_like_windows_device_name(source):

@@ -23,8 +23,8 @@ pip install -r requirements.txt
 nano vehicle.env
 
 # 2.2 필요한 경우 .env 파일 수정
-# - LANE_CAMERA_SOURCE: 차선 로직용 카메라 (예: HCAM01L)
-# - REAR_CAMERA_SOURCE: R단 후방 표시용 카메라 (예: HD PRO Webcam C920)
+# - LANE_CAMERA_SOURCE: 차선 로직용 카메라 (예: usb:4c4a:4a55)
+# - REAR_CAMERA_SOURCE: R단 후방 표시용 카메라 (예: usb:046d:08e5)
 # - CAMERA_SOURCE: 두 전용 설정이 없을 때 쓰는 기본 카메라 (0=기본, 'pi'=라즈베리파이)
 # - USE_GPIO: GPIO 사용 여부 (False=시뮬레이션, True=실제 센서)
 # - SIMULATION_MODE: True=시뮬레이션, False=실제 데이터
