@@ -13,6 +13,7 @@ os.environ.setdefault('CAMERA_SOURCE', '-1')
 
 from app.main import app, vehicle_state, pdw_data
 from app.can_interface import DISTANCE_LEVEL_FIELDS, decode_can_frame
+from app.can_controller import VehicleCanController
 from app.parking_line_detector import ParkingLineDetector
 
 
@@ -133,6 +134,38 @@ class SensorSimulationTest(unittest.TestCase):
         self.assertEqual(decoded['speed'], 3.5)
         self.assertEqual(decoded['gear'], 'R')
         self.assertTrue(decoded['collision_avoidance'])
+
+    def test_exit_status_2_or_3_resets_auto_parking_cmd(self):
+        """0x401 status 2/3 수신 시 0x300 송신 명령을 0으로 복귀."""
+        controller = VehicleCanController()
+
+        for status in (2, 3):
+            controller.set_auto_parking_cmd(4)
+            msg = type("CanMessage", (), {
+                "arbitration_id": 0x401,
+                "data": bytes([status]),
+            })()
+
+            changed = controller._handle_can_rx_message(msg)
+
+            self.assertTrue(changed)
+            self.assertEqual(controller.exit_status, status)
+            self.assertEqual(controller.auto_parking_cmd, 0)
+
+    def test_other_exit_status_keeps_auto_parking_cmd(self):
+        """0x401 status 2/3 외 값은 0x300 송신 명령을 유지."""
+        controller = VehicleCanController()
+        controller.set_auto_parking_cmd(4)
+        msg = type("CanMessage", (), {
+            "arbitration_id": 0x401,
+            "data": bytes([1]),
+        })()
+
+        changed = controller._handle_can_rx_message(msg)
+
+        self.assertTrue(changed)
+        self.assertEqual(controller.exit_status, 1)
+        self.assertEqual(controller.auto_parking_cmd, 4)
 
 
 class ParkingLineDetectorTest(unittest.TestCase):
